@@ -158,47 +158,12 @@ class MealPlanParser:
         "freitag": DayOfWeek.FRIDAY,
         "samstag": DayOfWeek.SATURDAY,
         "sonntag": DayOfWeek.SUNDAY,
-        "mo": DayOfWeek.MONDAY,
-        "di": DayOfWeek.TUESDAY,
-        "mi": DayOfWeek.WEDNESDAY,
-        "do": DayOfWeek.THURSDAY,
-        "fr": DayOfWeek.FRIDAY,
-        "sa": DayOfWeek.SATURDAY,
-        "so": DayOfWeek.SUNDAY,
-    }
-
-    # Slot patterns
-    SLOT_MAPPING = {
-        "mittag": MealSlot.LUNCH,
-        "lunch": MealSlot.LUNCH,
-        "abend": MealSlot.DINNER,
-        "dinner": MealSlot.DINNER,
-        "abends": MealSlot.DINNER,
-        "mittags": MealSlot.LUNCH,
     }
 
     def parse(self, html_content: str, page_id: str) -> MealPlanCreate:
         """Parse HTML content into a MealPlanCreate."""
-        # Extract text from HTML
-        text = self._strip_html(html_content)
-        lines = [line.strip() for line in text.split("\n") if line.strip()]
-
-        meals = []
-        current_day = None
-        week_start = self._extract_week_start(lines)
-
-        for line in lines:
-            # Try to detect day
-            day = self._detect_day(line)
-            if day is not None:
-                current_day = day
-                continue
-
-            # Try to detect meal
-            if current_day is not None:
-                meal = self._parse_meal_line(line, current_day)
-                if meal:
-                    meals.append(meal)
+        week_start = self._extract_week_start_from_html(html_content)
+        meals = self._parse_meal_blocks(html_content)
 
         return MealPlanCreate(
             onenote_page_id=page_id,
@@ -207,72 +172,88 @@ class MealPlanParser:
             meals=meals,
         )
 
+    def _parse_meal_blocks(self, html: str) -> list[MealCreate]:
+        """Parse meal blocks from HTML divs."""
+        meals = []
+
+        # Find all div blocks
+        div_pattern = re.compile(r"<div[^>]*>(.*?)</div>", re.DOTALL | re.IGNORECASE)
+
+        for div_match in div_pattern.finditer(html):
+            div_content = div_match.group(1)
+
+            # Extract paragraphs from this div
+            p_pattern = re.compile(r"<p[^>]*>(.*?)</p>", re.DOTALL | re.IGNORECASE)
+            paragraphs = [self._strip_html(p.group(1)).strip() for p in p_pattern.finditer(div_content)]
+            paragraphs = [p for p in paragraphs if p]  # Remove empty
+
+            if len(paragraphs) >= 2:
+                header = paragraphs[0]  # e.g., "Sonntag + Montag Abendessen"
+                recipe = paragraphs[1]  # e.g., URL or recipe name
+
+                # Extract URL if present
+                url_match = re.search(r'href="([^"]+)"', div_content)
+                if url_match:
+                    recipe = url_match.group(1)
+
+                # Parse header for days and slot
+                parsed_meals = self._parse_header(header, recipe)
+                meals.extend(parsed_meals)
+
+        return meals
+
+    def _parse_header(self, header: str, recipe: str) -> list[MealCreate]:
+        """Parse header like 'Sonntag + Montag Abendessen' into meals."""
+        meals = []
+        header_lower = header.lower()
+
+        # Detect slot
+        if "mittagessen" in header_lower or "mittag" in header_lower:
+            slot = MealSlot.LUNCH
+        else:
+            slot = MealSlot.DINNER  # Default
+
+        # Find all days mentioned
+        days_found = []
+        for day_name, day_enum in self.DAY_MAPPING.items():
+            if day_name in header_lower:
+                days_found.append(day_enum)
+
+        # Create a meal for each day
+        for day in days_found:
+            meals.append(MealCreate(
+                day_of_week=day,
+                slot=slot,
+                recipe_title=recipe,
+            ))
+
+        return meals
+
     def _strip_html(self, html: str) -> str:
         """Remove HTML tags and decode entities."""
-        # Remove HTML tags
-        text = re.sub(r"<[^>]+>", "\n", html)
-        # Decode common HTML entities
+        text = re.sub(r"<[^>]+>", " ", html)
         text = text.replace("&nbsp;", " ")
         text = text.replace("&amp;", "&")
         text = text.replace("&lt;", "<")
         text = text.replace("&gt;", ">")
         text = text.replace("&quot;", '"')
-        return text
+        return " ".join(text.split())  # Normalize whitespace
 
-    def _detect_day(self, line: str) -> DayOfWeek | None:
-        """Detect day of week from a line."""
-        line_lower = line.lower()
-        for pattern, day in self.DAY_MAPPING.items():
-            if pattern in line_lower:
-                # Check if this is a day header (not just a word containing the day)
-                if re.search(rf"\b{pattern}\b", line_lower):
-                    return day
-        return None
-
-    def _parse_meal_line(self, line: str, day: DayOfWeek) -> MealCreate | None:
-        """Parse a meal line and return MealCreate if valid."""
-        line_lower = line.lower()
-
-        # Detect slot
-        slot = MealSlot.DINNER  # Default to dinner
-        for pattern, meal_slot in self.SLOT_MAPPING.items():
-            if pattern in line_lower:
-                slot = meal_slot
-                # Remove slot indicator from title
-                line = re.sub(rf"\b{pattern}\b:?\s*", "", line, flags=re.IGNORECASE)
-                break
-
-        # Clean up the line
-        line = line.strip()
-        if not line or len(line) < 3:
-            return None
-
-        # Skip common non-meal lines
-        skip_patterns = ["wochenplan", "woche", "kw", "datum", "---", "==="]
-        if any(p in line_lower for p in skip_patterns):
-            return None
-
-        return MealCreate(
-            day_of_week=day,
-            slot=slot,
-            recipe_title=line,
-        )
-
-    def _extract_week_start(self, lines: list[str]) -> date | None:
-        """Try to extract week start date from content."""
-        for line in lines[:10]:  # Check first 10 lines
-            # Look for date patterns like "KW 5" or "05.02" or "5.2.2024"
-            date_match = re.search(r"(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?", line)
+    def _extract_week_start_from_html(self, html: str) -> date | None:
+        """Extract week start date from title tag."""
+        title_match = re.search(r"<title>([^<]+)</title>", html)
+        if title_match:
+            title = title_match.group(1)
+            # Parse date like "24.1.-30.1." or "17.1-23.1."
+            date_match = re.search(r"(\d{1,2})\.(\d{1,2})\.?-", title)
             if date_match:
                 day = int(date_match.group(1))
                 month = int(date_match.group(2))
-                year = int(date_match.group(3)) if date_match.group(3) else datetime.now().year
-                if year < 100:
-                    year += 2000
+                year = datetime.now().year
                 try:
                     return date(year, month, day)
                 except ValueError:
-                    continue
+                    pass
         return None
 
 

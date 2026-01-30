@@ -20,7 +20,8 @@ class AzureConfig:
     """Azure AD configuration for MS Graph API."""
 
     CLIENT_ID: str = os.getenv("AZURE_CLIENT_ID", "")
-    TENANT_ID: str = os.getenv("AZURE_TENANT_ID", "")
+    # Use "consumers" for personal Microsoft accounts, "common" for both, or tenant ID for org only
+    TENANT_ID: str = os.getenv("AZURE_TENANT_ID", "consumers")
     AUTHORITY: str = f"https://login.microsoftonline.com/{TENANT_ID}"
     SCOPES: list[str] = ["Notes.Read"]
     REDIRECT_URI: str = "http://localhost:8400"
@@ -28,7 +29,7 @@ class AzureConfig:
     @classmethod
     def is_configured(cls) -> bool:
         """Check if Azure credentials are configured."""
-        return bool(cls.CLIENT_ID and cls.TENANT_ID)
+        return bool(cls.CLIENT_ID)
 
 
 class OpenAIConfig:
