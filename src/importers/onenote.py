@@ -128,20 +128,30 @@ class OneNoteClient:
         response.raise_for_status()
         return response.text
 
-    def search_pages(self, query: str = "Wochenplan") -> list[dict]:
-        """Search for pages by title."""
+    def search_pages(self, query: str = "", notebooks_filter: list[str] | None = None) -> list[dict]:
+        """Search for pages, optionally filtered by notebook names."""
         all_pages = []
         notebooks = self.get_notebooks()
 
         for notebook in notebooks:
+            notebook_name = notebook.get("displayName", "")
+
+            # Filter by notebook name if specified
+            if notebooks_filter:
+                if not any(f.lower() in notebook_name.lower() for f in notebooks_filter):
+                    continue
+
             sections = self.get_sections(notebook["id"])
             for section in sections:
                 pages = self.get_pages(section["id"])
                 for page in pages:
-                    if query.lower() in page.get("title", "").lower():
-                        page["notebook_name"] = notebook.get("displayName", "")
-                        page["section_name"] = section.get("displayName", "")
-                        all_pages.append(page)
+                    title = page.get("title", "")
+                    # Filter by query if specified
+                    if query and query.lower() not in title.lower():
+                        continue
+                    page["notebook_name"] = notebook_name
+                    page["section_name"] = section.get("displayName", "")
+                    all_pages.append(page)
 
         return all_pages
 
@@ -293,7 +303,11 @@ def list_notebooks():
         print()
 
 
-def import_meal_plans(search_term: str = "Wochenplan", export_raw: bool = False):
+def import_meal_plans(
+    search_term: str = "",
+    notebooks: list[str] | None = None,
+    export_raw: bool = False,
+):
     """Import meal plans from OneNote."""
     ensure_directories()
     init_db()
@@ -302,8 +316,14 @@ def import_meal_plans(search_term: str = "Wochenplan", export_raw: bool = False)
     if not client.authenticate():
         return
 
-    print(f"\nSearching for pages containing '{search_term}'...\n")
-    pages = client.search_pages(search_term)
+    filter_desc = []
+    if notebooks:
+        filter_desc.append(f"notebooks: {', '.join(notebooks)}")
+    if search_term:
+        filter_desc.append(f"search: '{search_term}'")
+    print(f"\nSearching for pages ({', '.join(filter_desc) or 'all'})...\n")
+
+    pages = client.search_pages(search_term, notebooks)
 
     if not pages:
         print("No matching pages found.")
@@ -405,8 +425,13 @@ def main():
     import_parser = subparsers.add_parser("import", help="Import meal plans from OneNote")
     import_parser.add_argument(
         "--search",
-        default="Wochenplan",
-        help="Search term for page titles (default: Wochenplan)",
+        default="",
+        help="Search term for page titles (optional)",
+    )
+    import_parser.add_argument(
+        "--notebooks",
+        nargs="+",
+        help="Filter by notebook names (e.g., --notebooks 'Essen 2025' 'Essensplanung')",
     )
     import_parser.add_argument(
         "--export-raw",
@@ -426,7 +451,7 @@ def main():
     elif args.command == "list-notebooks":
         list_notebooks()
     elif args.command == "import":
-        import_meal_plans(args.search, args.export_raw)
+        import_meal_plans(args.search, args.notebooks, args.export_raw)
     elif args.command == "export-page":
         export_page_content(args.page_id)
     else:
