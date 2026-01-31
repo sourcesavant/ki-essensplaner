@@ -49,6 +49,24 @@ def get_meal_urls() -> list[dict]:
     return [{"url": url, "meal_ids": ids} for url, ids in url_map.items()]
 
 
+def parse_nutrition_value(value: str | None) -> float | None:
+    """Parse nutrition value string to float.
+
+    Examples:
+        '293 kcal' -> 293
+        '22 g' -> 22.0
+        '3.7 g' -> 3.7
+    """
+    if not value:
+        return None
+    # Extract first number (int or float)
+    match = re.search(r"(\d+(?:[.,]\d+)?)", value)
+    if match:
+        num_str = match.group(1).replace(",", ".")
+        return float(num_str)
+    return None
+
+
 def extract_source_from_url(url: str) -> str:
     """Extract source name from URL domain.
 
@@ -109,6 +127,22 @@ def scrape_recipe(url: str) -> RecipeCreate | None:
         except Exception:
             pass
 
+        # Get nutrition info
+        calories = None
+        fat_g = None
+        protein_g = None
+        carbs_g = None
+        try:
+            nutrients = scraper.nutrients()
+            if nutrients:
+                calories_val = parse_nutrition_value(nutrients.get("calories"))
+                calories = int(calories_val) if calories_val else None
+                fat_g = parse_nutrition_value(nutrients.get("fatContent"))
+                protein_g = parse_nutrition_value(nutrients.get("proteinContent"))
+                carbs_g = parse_nutrition_value(nutrients.get("carbohydrateContent"))
+        except Exception:
+            pass
+
         return RecipeCreate(
             title=scraper.title(),
             source=extract_source_from_url(url),
@@ -116,6 +150,10 @@ def scrape_recipe(url: str) -> RecipeCreate | None:
             prep_time_minutes=total_time,
             ingredients=ingredients,
             instructions=instructions,
+            calories=calories,
+            fat_g=fat_g,
+            protein_g=protein_g,
+            carbs_g=carbs_g,
         )
 
     except WebsiteNotImplementedError:

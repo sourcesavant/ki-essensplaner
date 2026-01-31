@@ -106,6 +106,43 @@ class FamilienkostScraper:
         # Decode HTML entities (e.g., &ouml; -> ö, &#189; -> ½)
         return [html.unescape(ing.strip()) for ing in ingredients if ing.strip()]
 
+    def nutrients(self) -> dict:
+        """Get nutrition information.
+
+        Returns:
+            Dict with calories, fat_g, protein_g, carbs_g (as floats)
+        """
+        data = self._fetch_and_parse()
+        if not data:
+            return {}
+
+        nutrition = data.get("nutrition", {})
+        if not nutrition:
+            return {}
+
+        result = {}
+
+        # Parse calories (e.g., "374 kcal" -> 374)
+        calories = nutrition.get("calories", "")
+        if calories:
+            match = re.search(r"(\d+)", calories)
+            if match:
+                result["calories"] = int(match.group(1))
+
+        # Parse grams (e.g., "22 g" -> 22.0)
+        for key, result_key in [
+            ("fatContent", "fat_g"),
+            ("proteinContent", "protein_g"),
+            ("carbohydrateContent", "carbs_g"),
+        ]:
+            value = nutrition.get(key, "")
+            if value:
+                match = re.search(r"(\d+(?:[.,]\d+)?)", value)
+                if match:
+                    result[result_key] = float(match.group(1).replace(",", "."))
+
+        return result
+
     def instructions(self) -> str:
         """Get cooking instructions as text."""
         data = self._fetch_and_parse()
@@ -147,6 +184,8 @@ def scrape_familienkost(url: str) -> RecipeCreate | None:
     if not title:
         return None
 
+    nutrients = scraper.nutrients()
+
     return RecipeCreate(
         title=title,
         source="familienkost",
@@ -154,6 +193,10 @@ def scrape_familienkost(url: str) -> RecipeCreate | None:
         prep_time_minutes=scraper.total_time(),
         ingredients=scraper.ingredients(),
         instructions=scraper.instructions(),
+        calories=nutrients.get("calories"),
+        fat_g=nutrients.get("fat_g"),
+        protein_g=nutrients.get("protein_g"),
+        carbs_g=nutrients.get("carbs_g"),
     )
 
 

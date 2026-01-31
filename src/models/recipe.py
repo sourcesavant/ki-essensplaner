@@ -15,6 +15,11 @@ class Recipe(BaseModel):
     prep_time_minutes: int | None = None
     ingredients: list[str] = Field(default_factory=list)
     instructions: str | None = None
+    # Nutrition info
+    calories: int | None = None
+    fat_g: float | None = None
+    protein_g: float | None = None
+    carbs_g: float | None = None
     created_at: datetime | None = None
 
     class Config:
@@ -30,3 +35,8 @@ class RecipeCreate(BaseModel):
     prep_time_minutes: int | None = None
     ingredients: list[str] = Field(default_factory=list)
     instructions: str | None = None
+    # Nutrition info
+    calories: int | None = None
+    fat_g: float | None = None
+    protein_g: float | None = None
+    carbs_g: float | None = None

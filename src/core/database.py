@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS recipes (
     prep_time_minutes INTEGER,
     ingredients TEXT,
     instructions TEXT,
+    calories INTEGER,
+    fat_g REAL,
+    protein_g REAL,
+    carbs_g REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -80,8 +84,9 @@ def create_recipe(recipe: RecipeCreate) -> Recipe:
     with get_connection() as conn:
         cursor = conn.execute(
             """
-            INSERT INTO recipes (title, source, source_url, prep_time_minutes, ingredients, instructions)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO recipes (title, source, source_url, prep_time_minutes, ingredients, instructions,
+                                 calories, fat_g, protein_g, carbs_g)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 recipe.title,
@@ -90,6 +95,10 @@ def create_recipe(recipe: RecipeCreate) -> Recipe:
                 recipe.prep_time_minutes,
                 json.dumps(recipe.ingredients),
                 recipe.instructions,
+                recipe.calories,
+                recipe.fat_g,
+                recipe.protein_g,
+                recipe.carbs_g,
             ),
         )
         return Recipe(
@@ -100,6 +109,10 @@ def create_recipe(recipe: RecipeCreate) -> Recipe:
             prep_time_minutes=recipe.prep_time_minutes,
             ingredients=recipe.ingredients,
             instructions=recipe.instructions,
+            calories=recipe.calories,
+            fat_g=recipe.fat_g,
+            protein_g=recipe.protein_g,
+            carbs_g=recipe.carbs_g,
             created_at=datetime.now(),
         )
 
@@ -145,7 +158,8 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                 conn.execute(
                     """
                     UPDATE recipes
-                    SET title = ?, source = ?, prep_time_minutes = ?, ingredients = ?, instructions = ?
+                    SET title = ?, source = ?, prep_time_minutes = ?, ingredients = ?, instructions = ?,
+                        calories = ?, fat_g = ?, protein_g = ?, carbs_g = ?
                     WHERE source_url = ?
                     """,
                     (
@@ -154,6 +168,10 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                         recipe.prep_time_minutes,
                         json.dumps(recipe.ingredients),
                         recipe.instructions,
+                        recipe.calories,
+                        recipe.fat_g,
+                        recipe.protein_g,
+                        recipe.carbs_g,
                         recipe.source_url,
                     ),
                 )
@@ -165,6 +183,10 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                 prep_time_minutes=recipe.prep_time_minutes,
                 ingredients=recipe.ingredients,
                 instructions=recipe.instructions,
+                calories=recipe.calories,
+                fat_g=recipe.fat_g,
+                protein_g=recipe.protein_g,
+                carbs_g=recipe.carbs_g,
                 created_at=existing.created_at,
             )
     return create_recipe(recipe)
@@ -181,6 +203,10 @@ def _row_to_recipe(row: sqlite3.Row) -> Recipe:
         prep_time_minutes=row["prep_time_minutes"],
         ingredients=ingredients,
         instructions=row["instructions"],
+        calories=row["calories"] if "calories" in row.keys() else None,
+        fat_g=row["fat_g"] if "fat_g" in row.keys() else None,
+        protein_g=row["protein_g"] if "protein_g" in row.keys() else None,
+        carbs_g=row["carbs_g"] if "carbs_g" in row.keys() else None,
         created_at=row["created_at"],
     )
 
