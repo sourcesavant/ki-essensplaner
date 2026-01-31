@@ -1,4 +1,25 @@
-"""Normalize all ingredients in the database.
+"""Normalize and store all recipe ingredients in the database.
+
+This module processes all recipes and stores their parsed/normalized
+ingredients in the parsed_ingredients table. This enables:
+- Ingredient frequency analysis for preference profiling
+- Aggregation of shopping lists
+- Recipe similarity calculations
+
+The normalization pipeline:
+1. Parse ingredient strings (amount, unit, name)
+2. Look up taste-based categorization from GPT cache
+3. Store normalized data in parsed_ingredients table
+
+Example usage:
+    >>> from src.profile.normalize_ingredients import normalize_all_recipes
+    >>> stats = normalize_all_recipes()
+    >>> print(f"Processed {stats['ingredients']} ingredients")
+
+    >>> from src.profile.normalize_ingredients import get_ingredient_frequencies
+    >>> top = get_ingredient_frequencies()[:5]
+    >>> for item in top:
+    ...     print(f"{item['base_ingredient']}: {item['recipe_count']} recipes")
 
 Issue #5: Normalisiere Bezeichnung von Zutaten und Mengen
 """

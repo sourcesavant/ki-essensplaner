@@ -1,4 +1,32 @@
-"""Custom scraper for familienkost.de using JSON-LD structured data."""
+"""Custom scraper for familienkost.de using JSON-LD structured data.
+
+This scraper is needed because familienkost.de is not supported by the
+recipe-scrapers library. It extracts recipe data from Schema.org JSON-LD
+structured data embedded in the page.
+
+Features:
+- Extracts title, ingredients, instructions, prep time
+- Extracts nutrition data (calories, fat, protein, carbs)
+- Decodes HTML entities in German text (e.g., &ouml; → ö)
+- Parses ISO 8601 durations (PT20M → 20 minutes)
+
+The JSON-LD structure on familienkost.de:
+    <script type="application/ld+json">
+    {
+        "@type": "Recipe",
+        "name": "Eierragout",
+        "recipeIngredient": ["1 Zwiebel", "50 g Butter", ...],
+        "recipeInstructions": [...],
+        "nutrition": {"calories": "374 kcal", ...}
+    }
+    </script>
+
+Example usage:
+    >>> from src.scrapers.familienkost import scrape_familienkost
+    >>> recipe = scrape_familienkost("https://www.familienkost.de/rezept_eierragout.html")
+    >>> print(recipe.title, recipe.calories)
+    Eierragout 374
+"""
 
 import html
 import json
@@ -13,7 +41,12 @@ from src.models.recipe import RecipeCreate
 
 @dataclass
 class FamilienkostScraper:
-    """Scraper for familienkost.de recipes using Schema.org JSON-LD."""
+    """Scraper for familienkost.de recipes using Schema.org JSON-LD.
+
+    Attributes:
+        url: The recipe URL to scrape
+        _data: Cached JSON-LD data (lazy-loaded on first access)
+    """
 
     url: str
     _data: dict | None = None

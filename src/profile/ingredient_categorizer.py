@@ -1,4 +1,23 @@
-"""Categorize ingredients using GPT-4o-mini.
+"""Categorize ingredients by taste profile using GPT-4o-mini.
+
+This module uses GPT-4o-mini to:
+1. Translate English ingredient names to German
+2. Normalize ingredient names (singular, lowercase)
+3. Assign taste-based categories (base_ingredient)
+
+The categorization groups ingredients by TASTE, not just type:
+- kirschtomate, dosentomate → tomate (same taste)
+- feta stays feta (unique salty/sour taste)
+- parmesan, pecorino → hartkäse_würzig (similar savory taste)
+
+Results are cached to avoid repeated API calls. The cache is stored in
+data/local/ingredient_categories.json.
+
+Example usage:
+    >>> from src.profile.ingredient_categorizer import categorize_ingredients_batch
+    >>> results = categorize_ingredients_batch(["kirschtomate", "garlic"])
+    >>> print(results["garlic"])
+    {'name_normalized': 'knoblauch', 'base_ingredient': 'knoblauch'}
 
 Issue #5: Normalisiere Bezeichnung von Zutaten und Mengen
 """
@@ -11,7 +30,8 @@ from openai import OpenAI
 
 from src.core.config import DATA_DIR
 
-# Cache file for categorizations
+# Cache file path for persisting categorizations between runs
+# This avoids repeated API calls for the same ingredients
 CACHE_FILE = DATA_DIR / "local" / "ingredient_categories.json"
 
 SYSTEM_PROMPT = """Du bist ein Experte für Lebensmittel und Geschmacksprofile.
@@ -68,7 +88,12 @@ Antworte mit einem JSON-Array:
 
 
 def load_cache() -> dict[str, dict]:
-    """Load cached categorizations."""
+    """Load cached ingredient categorizations from disk.
+
+    Returns:
+        Dict mapping ingredient names to their categorization:
+        {"kirschtomate": {"name_normalized": "tomate", "base_ingredient": "tomate"}}
+    """
     if CACHE_FILE.exists():
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -76,7 +101,11 @@ def load_cache() -> dict[str, dict]:
 
 
 def save_cache(cache: dict[str, dict]) -> None:
-    """Save categorizations to cache."""
+    """Persist ingredient categorizations to disk.
+
+    Args:
+        cache: Dict mapping ingredient names to their categorization
+    """
     CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)

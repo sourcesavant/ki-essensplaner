@@ -1,6 +1,26 @@
-"""Fetch recipes from URLs stored in meal plans.
+"""Fetch and scrape recipes from URLs stored in meal plans.
+
+This module extracts recipe URLs from the meals table (imported from OneNote)
+and scrapes the full recipe data (title, ingredients, instructions, nutrition)
+from the source websites.
+
+Supported scrapers:
+- recipe-scrapers library: eatsmarter.de, jamieoliver.com, emmikochteinfach.de, etc.
+- Custom scrapers: familienkost.de (uses JSON-LD structured data)
+
+The scraping process:
+1. Extract unique URLs from meals.recipe_title (where recipe_id is NULL)
+2. For each URL, use the appropriate scraper to fetch recipe data
+3. Store recipe in database and link to meals via recipe_id
+4. Rate limiting (0.5s delay) to avoid being blocked
+
+Example usage:
+    >>> from src.scrapers.recipe_fetcher import fetch_all_recipes
+    >>> stats = fetch_all_recipes(delay_seconds=0.5)
+    >>> print(f"Scraped: {stats['scraped']}, Failed: {stats['failed']}")
 
 Issue #3: Rufe Rezepte von gespeicherten Links ab
+Issue #7: Extrahiere Nährwertdaten aus Rezeptseiten
 """
 
 import re
@@ -14,7 +34,8 @@ from src.core.database import get_connection, get_recipe_by_url, upsert_recipe
 from src.models.recipe import RecipeCreate
 from src.scrapers.familienkost import scrape_familienkost
 
-# Custom scrapers for unsupported sites
+# Registry of custom scrapers for sites not supported by recipe-scrapers
+# Key: domain (without www.), Value: scraper function
 CUSTOM_SCRAPERS = {
     "familienkost.de": scrape_familienkost,
 }

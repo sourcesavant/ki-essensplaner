@@ -1,5 +1,20 @@
 """Parse and normalize ingredient strings.
 
+This module extracts structured data from ingredient strings like "200 g Tomaten"
+into components: amount (200), unit (gramm), name (tomate).
+
+Key features:
+- Regex-based parsing of German and English ingredient formats
+- Unit normalization (EL → esslöffel, TL → teelöffel, g → gramm)
+- Basic German plural to singular conversion (Tomaten → Tomate)
+- Removal of filler words and parenthetical content
+
+Example usage:
+    >>> from src.profile.ingredient_parser import parse_ingredient
+    >>> parsed = parse_ingredient("200 g Kirschtomaten")
+    >>> print(parsed.amount, parsed.unit, parsed.name)
+    200.0 gramm kirschtomate
+
 Issue #5: Normalisiere Bezeichnung von Zutaten und Mengen
 """
 
@@ -9,16 +24,25 @@ from dataclasses import dataclass
 
 @dataclass
 class ParsedIngredient:
-    """A parsed ingredient with amount, unit, and name."""
+    """A parsed ingredient with structured components.
+
+    Attributes:
+        original: The original ingredient string as it appeared in the recipe
+        amount: Numeric amount (e.g., 200.0 for "200 g"), None if not specified
+        unit: Normalized unit (e.g., "gramm", "esslöffel"), None if not specified
+        name: Normalized ingredient name in singular form
+        base_ingredient: Taste-based category (filled by GPT categorization)
+    """
 
     original: str
     amount: float | None
     unit: str | None
     name: str
-    base_ingredient: str | None = None  # Filled by GPT categorization
+    base_ingredient: str | None = None
 
 
-# Unit normalization mapping
+# Mapping of unit variations to their normalized form
+# Includes both German and English units for international recipe support
 UNIT_MAPPING = {
     # German units
     "el": "esslöffel",
@@ -76,7 +100,15 @@ UNIT_MAPPING = {
 
 
 def normalize_unit(unit: str | None) -> str | None:
-    """Normalize a unit string."""
+    """Normalize a unit string to its canonical form.
+
+    Args:
+        unit: Raw unit string (e.g., "EL", "g", "teaspoon")
+
+    Returns:
+        Normalized unit (e.g., "esslöffel", "gramm") or the original
+        lowercase string if not found in mapping. Returns None if input is None.
+    """
     if not unit:
         return None
     unit_lower = unit.lower().strip()
