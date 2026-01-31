@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner  
-**Version:** 1.1 (Update: Vorlieben-Ableitung, 30.01.2026)  
+**Version:** 1.2 (Update: Phase 3 Details, 31.01.2026)  
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -20,7 +20,25 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - Daten: SQLite (data/local/mealplanner.db), JSON (data/raw/all_recipes.json).
 - Importer: MS Graph API (OneNote), recipe-scrapers (eatsmarter.de + Multi-Site).
 - Tools: PyCharm, GitHub Projects/Issues, plugged.in MCP.
-- Phasen: 1=Scrape-Test, 2=OneNote-Merge, 3=DB+Profil (Vorlieben), 4=Planner+Search.
+
+## Phasen & Issues
+
+### Phase 1: Scrape-Test ✅
+- Issue #1: eatsmarter.py Test-Scraper (3 URLs mit recipe-scrapers)
+
+### Phase 2: OneNote-Merge ✅
+- Issue #2: OneNote Importer (MS Graph API)
+
+### Phase 3: DB + Profil (Vorlieben) 🔄
+- Issue #3: Rufe Rezepte von gespeicherten Links ab (Scraping der OneNote-URLs)
+- Issue #4: Extrahiere Zutaten und Dauer von Rezepten
+- Issue #5: Normalisiere Bezeichnung von Zutaten und Mengen
+- Issue #6: Leite Vorlieben-Profil ab (TF-IDF für Zutaten, Aufwand-Klassen pro Wochentag/Slot)
+
+### Phase 4: Planner + Search ⏳
+- Intelligentes Rezept-Scouting (Score >80% zu Profil)
+- Hybrider Wochenplaner (60% Favoriten + 40% Neue)
+- Einkaufslisten-Generator
 
 ## User Stories
 - Als User lade ich OneNote-Pläne hoch → Agent leitet Zutaten-Vorlieben + Aufwand-Profile ab.
