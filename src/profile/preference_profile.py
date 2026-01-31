@@ -25,6 +25,7 @@ from typing import Any
 
 from src.core.config import DATA_DIR
 from src.core.database import get_connection, get_all_recipes
+from src.profile.pseudo_recipes import get_all_pseudo_recipes
 
 # Output path for the generated profile
 PROFILE_PATH = DATA_DIR / "local" / "preference_profile.json"
@@ -123,12 +124,15 @@ def get_distinctive_ingredient_frequencies() -> list[dict]:
     ]
 
 
-def get_weekday_slot_data() -> dict[str, dict[str, list[dict]]]:
+def get_weekday_slot_data(include_pseudo: bool = True) -> dict[str, dict[str, list[dict]]]:
     """Get meal data grouped by weekday and slot.
+
+    Args:
+        include_pseudo: Include pseudo-recipes (simple meal names without URLs)
 
     Returns:
         Nested dict: weekday -> slot -> list of meal data
-        Each meal has: prep_time, calories, protein, carbs, fat, ingredients
+        Each meal has: prep_time, calories, protein, carbs, fat, ingredients, is_pseudo
     """
     # Map day_of_week integer (0=Monday) to German weekday names
     day_mapping = {
@@ -151,7 +155,7 @@ def get_weekday_slot_data() -> dict[str, dict[str, list[dict]]]:
     result = {day: {"Mittagessen": [], "Abendessen": []} for day in weekdays}
 
     with get_connection() as conn:
-        # Get meals with recipe data
+        # Get meals with recipe data (from scraped recipes)
         rows = conn.execute("""
             SELECT
                 m.day_of_week,
@@ -192,7 +196,29 @@ def get_weekday_slot_data() -> dict[str, dict[str, list[dict]]]:
                     "carbs": row["carbs_g"],
                     "fat": row["fat_g"],
                     "ingredients": ingredients,
+                    "is_pseudo": False,
                 })
+
+    # Add pseudo-recipes (simple meal names)
+    if include_pseudo:
+        pseudo_meals = get_all_pseudo_recipes()
+
+        for meal in pseudo_meals:
+            weekday = day_mapping.get(meal["day_of_week"])
+            slot = slot_mapping.get(meal["slot"])
+
+            if weekday and slot and weekday in result and slot in result[weekday]:
+                # Pseudo-recipes have no nutrition data, only ingredients
+                if meal["ingredients"]:  # Only include if we have mapped ingredients
+                    result[weekday][slot].append({
+                        "prep_time": None,  # Quick meals, no formal prep time
+                        "calories": None,
+                        "protein": None,
+                        "carbs": None,
+                        "fat": None,
+                        "ingredients": meal["ingredients"],
+                        "is_pseudo": True,
+                    })
 
     return result
 
@@ -247,8 +273,11 @@ def calculate_slot_pattern(meals: list[dict], universal: set[str]) -> WeekdaySlo
     return pattern
 
 
-def generate_profile() -> dict[str, Any]:
+def generate_profile(include_pseudo: bool = True) -> dict[str, Any]:
     """Generate a complete preference profile from meal history.
+
+    Args:
+        include_pseudo: Include pseudo-recipes in analysis
 
     Returns:
         Dict with:
@@ -264,19 +293,30 @@ def generate_profile() -> dict[str, Any]:
     # Get distinctive ingredient preferences
     ingredient_prefs = get_distinctive_ingredient_frequencies()
 
-    # Get weekday/slot data
-    weekday_data = get_weekday_slot_data()
+    # Get weekday/slot data (now includes pseudo-recipes)
+    weekday_data = get_weekday_slot_data(include_pseudo=include_pseudo)
 
     # Calculate patterns for each weekday and slot
     weekday_patterns = {}
     all_meals = []
+    total_pseudo = 0
+    total_with_recipe = 0
 
     for weekday, slots in weekday_data.items():
         weekday_patterns[weekday] = {}
         for slot, meals in slots.items():
             pattern = calculate_slot_pattern(meals, universal)
+
+            # Count pseudo vs regular
+            pseudo_count = sum(1 for m in meals if m.get("is_pseudo", False))
+            recipe_count = len(meals) - pseudo_count
+            total_pseudo += pseudo_count
+            total_with_recipe += recipe_count
+
             weekday_patterns[weekday][slot] = {
                 "meal_count": pattern.meal_count,
+                "recipe_meals": recipe_count,
+                "pseudo_meals": pseudo_count,
                 "avg_prep_time_min": pattern.avg_prep_time,
                 "avg_calories": pattern.avg_calories,
                 "avg_protein_g": pattern.avg_protein,
@@ -286,22 +326,19 @@ def generate_profile() -> dict[str, Any]:
             }
             all_meals.extend(meals)
 
-    # Calculate overall nutrition
-    overall_pattern = calculate_slot_pattern(all_meals, universal)
+    # Calculate overall nutrition (only from meals with nutrition data)
+    meals_with_nutrition = [m for m in all_meals if not m.get("is_pseudo", False)]
+    overall_pattern = calculate_slot_pattern(meals_with_nutrition, universal)
 
     # Build summary
-    total_meals = sum(
-        weekday_patterns[d][s]["meal_count"]
-        for d in weekday_patterns
-        for s in weekday_patterns[d]
-    )
+    total_meals = total_with_recipe + total_pseudo
 
     return {
         "universal_ingredients": sorted(universal),
         "ingredient_preferences": ingredient_prefs[:50],  # Top 50
         "weekday_patterns": weekday_patterns,
         "overall_nutrition": {
-            "total_meals_analyzed": total_meals,
+            "meals_with_nutrition": total_with_recipe,
             "avg_calories": overall_pattern.avg_calories,
             "avg_protein_g": overall_pattern.avg_protein,
             "avg_carbs_g": overall_pattern.avg_carbs,
@@ -310,6 +347,8 @@ def generate_profile() -> dict[str, Any]:
         },
         "summary": {
             "total_meals": total_meals,
+            "meals_with_recipes": total_with_recipe,
+            "pseudo_meals": total_pseudo,
             "unique_ingredients": len(ingredient_prefs),
             "filtered_universal": len(universal),
         },
@@ -350,16 +389,19 @@ def print_profile_summary(profile: dict) -> None:
     print("=" * 60)
 
     # Summary stats
-    print(f"\nAnalysierte Mahlzeiten: {profile['summary']['total_meals']}")
-    print(f"Unterscheidende Zutaten: {profile['summary']['unique_ingredients']}")
-    print(f"Gefilterte universelle Zutaten: {profile['summary']['filtered_universal']}")
+    summary = profile["summary"]
+    print(f"\nAnalysierte Mahlzeiten: {summary['total_meals']}")
+    print(f"  - Mit Rezept-Link:    {summary['meals_with_recipes']}")
+    print(f"  - Pseudo-Rezepte:     {summary['pseudo_meals']}")
+    print(f"Unterscheidende Zutaten: {summary['unique_ingredients']}")
+    print(f"Gefilterte universelle Zutaten: {summary['filtered_universal']}")
 
     # Universal ingredients
     print(f"\nUniverselle Zutaten (>70%): {', '.join(profile['universal_ingredients'])}")
 
     # Overall nutrition
     nutr = profile["overall_nutrition"]
-    print(f"\nDurchschnittliche Naehrwerte:")
+    print(f"\nDurchschnittliche Naehrwerte (basierend auf {nutr['meals_with_nutrition']} Rezepten):")
     print(f"  Kalorien: {nutr['avg_calories']:.0f} kcal")
     print(f"  Protein:  {nutr['avg_protein_g']:.1f} g")
     print(f"  Kohlenhydrate: {nutr['avg_carbs_g']:.1f} g")
@@ -386,7 +428,8 @@ def print_profile_summary(profile: dict) -> None:
         print(f"\n{weekday}:")
 
         if lunch.get("meal_count", 0) > 0:
-            print(f"  Mittagessen ({lunch['meal_count']} Mahlzeiten):")
+            pseudo_info = f", {lunch.get('pseudo_meals', 0)} Pseudo" if lunch.get('pseudo_meals') else ""
+            print(f"  Mittagessen ({lunch['meal_count']} Mahlzeiten{pseudo_info}):")
             if lunch.get("avg_prep_time_min"):
                 print(f"    Zeit: {lunch['avg_prep_time_min']:.0f} min")
             if lunch.get("avg_calories"):
@@ -395,7 +438,8 @@ def print_profile_summary(profile: dict) -> None:
                 print(f"    Top Zutaten: {', '.join(lunch['top_ingredients'][:5])}")
 
         if dinner.get("meal_count", 0) > 0:
-            print(f"  Abendessen ({dinner['meal_count']} Mahlzeiten):")
+            pseudo_info = f", {dinner.get('pseudo_meals', 0)} Pseudo" if dinner.get('pseudo_meals') else ""
+            print(f"  Abendessen ({dinner['meal_count']} Mahlzeiten{pseudo_info}):")
             if dinner.get("avg_prep_time_min"):
                 print(f"    Zeit: {dinner['avg_prep_time_min']:.0f} min")
             if dinner.get("avg_calories"):
