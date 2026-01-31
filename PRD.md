@@ -9,10 +9,12 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 
 ## Kern-Features (Priorisiert)
 1. **Profil-basiertes Lernen (Content-Based Filtering)**: Analysiert OneNote-Pläne → Vorlieben (Zutaten-Frequenz/Häufigkeit, Aufwand-Klassen: quick/normal/long pro Wochentag/Slot).
-2. **Intelligentes Rezept-Scouting**: Sucht auf eatsmarter.de + anderen Sites nach Matches (Score >80% zu Profil: Zutaten-Ähnlichkeit, Aufwand-Passung).
-3. **Hybrider Wochenplaner**: 7-Tage-Mix (Favoriten 60% + Neue 40%), Randbedingungen (<30min Werktags).
-4. **Einkaufslisten**: Aggregierte Zutaten (Mengen, Kategorien).
-5. **Integration**: HA-Dashboard (optional).
+2. **Intelligentes Rezept-Scouting**: Sucht auf eatsmarter.de + anderen Sites nach Matches (Score >80% zu Profil: Zutaten-Ähnlichkeit, Aufwand-Passung). Berücksichtigung von Saisonalität, Verfügbarkeit von Produkten auf bevorzugter Einkaufwebseite
+3. **Hybrider Wochenplaner**: 7-Tage-Mix (Favoriten 60% + Neue 40%).
+4. **Lernfunktion** Aktualisiert wöchentlich das Profil.
+5. **Rückmeldung** User kann Rezepte bewerten. User kann Zutaten ausschließen. Rezepte mit dieser Zutat werden trotzdem berücksichtigt, wenn Zutat durch ähnliche Zutat ersetzt werden kann.
+6. **Einkaufslisten**: Aggregierte Zutaten (Mengen, Kategorien).
+7. **Integration**: HA-Dashboard.
 
 ## Tech-Stack
 - Sprache: Python 3.12 (venv).
@@ -36,9 +38,17 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - Issue #6: Leite Vorlieben-Profil ab (TF-IDF für Zutaten, Aufwand-Klassen pro Wochentag/Slot)
 
 ### Phase 4: Planner + Search ⏳
-- Intelligentes Rezept-Scouting (Score >80% zu Profil)
+- Verfügbarkeit von saisonalen Produkten auf präferierten Einkaufwebseiten
+- Intelligentes Rezept-Scouting (Scoring, Saisonalität, Verfügbarkeit)
 - Hybrider Wochenplaner (60% Favoriten + 40% Neue)
-- Einkaufslisten-Generator
+
+### Phase: 5 Lernfunktion + Interaktion
+- wöchentliche Aktualisierungsmöglichkeit für das Profil
+- Bewertungsmöglichkeit von Rezepten
+- Ausschluss von Zutaten; Modifikation von Rezepten durch Ersatz von ungewünschten Zutaten durch ähnliche Zutaten
+
+### Integration in HA-Dashboard
+- User Interface
 
 ## User Stories
 - Als User lade ich OneNote-Pläne hoch → Agent leitet Zutaten-Vorlieben + Aufwand-Profile ab.
