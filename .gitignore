@@ -211,3 +211,4 @@ data/local/*.db
 data/raw/*.html
 data/raw/*.json
 data/local/ingredient_categories.json
+data/local/preference_profile.json
