@@ -210,3 +210,4 @@ __marimo__/
 data/local/*.db
 data/raw/*.html
 data/raw/*.json
+data/local/ingredient_categories.json

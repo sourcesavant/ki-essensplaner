@@ -46,10 +46,23 @@ CREATE TABLE IF NOT EXISTS meals (
     recipe_title TEXT
 );
 
+-- Parsed/normalized ingredients
+CREATE TABLE IF NOT EXISTS parsed_ingredients (
+    id INTEGER PRIMARY KEY,
+    recipe_id INTEGER REFERENCES recipes(id),
+    original TEXT,
+    amount REAL,
+    unit TEXT,
+    ingredient TEXT,
+    base_ingredient TEXT
+);
+
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_recipes_source ON recipes(source);
 CREATE INDEX IF NOT EXISTS idx_meals_plan_id ON meals(meal_plan_id);
 CREATE INDEX IF NOT EXISTS idx_meal_plans_page_id ON meal_plans(onenote_page_id);
+CREATE INDEX IF NOT EXISTS idx_parsed_ingredients_recipe ON parsed_ingredients(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_parsed_ingredients_base ON parsed_ingredients(base_ingredient);
 """
 
 
