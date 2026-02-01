@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 1.7 (Update: Phase 6 abgeschlossen, 01.02.2026)
+**Version:** 1.8 (Update: Phase 7 Issues definiert, 01.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -122,7 +122,51 @@ print(split)  # Bioland + Rewe Listen
 ```
 
 ### Phase 7: Integration in HA-Dashboard 🔜
-- User Interface (MQTT/REST API)
+
+**Architektur-Entscheidungen:**
+- REST API (FastAPI) - MQTT später bei Bedarf
+- Lokales Add-on (privates Repo, kein HACS)
+- Ein Haushaltsprofil (kein Multi-User)
+- Offline-Caching im Custom Component
+
+**Issues:**
+- Issue #23: API-Layer + Add-on Grundgerüst
+  - FastAPI mit uvicorn, Token-Auth
+  - Lokales Add-on in `/addons/ki_essensplaner/`
+  - Custom Component in `custom_components/ki_essensplaner/`
+  - `sensor.essensplaner_api_status` (online/offline + Caching)
+- Issue #24: Onboarding
+  - OneNote-Zugriff konfigurieren
+  - Notizbücher auswählen
+  - Erste Profilerstellung
+- Issue #25: Konfigurationsmodul
+  - Rezept-Bewertung Service (`ki_essensplaner.rate_recipe`)
+  - Zutaten-Ausschluss Service (`ki_essensplaner.exclude_ingredient`)
+  - Profil-Sensoren (Alter, Top-Zutaten, Ausschlüsse)
+- Issue #26: Wochenplanmodul
+  - Plan generieren/laden Services
+  - 14 Slot-Sensoren (Mo-So × Mittag/Abend)
+  - `sensor.essensplaner_naechste_mahlzeit`
+  - Kalender-Integration (optional)
+- Issue #27: Einkaufslistenmodul
+  - Einkaufsliste generieren Service
+  - Sensoren für Bioland/Rewe Anzahl
+  - Todo-Listen Sync
+- Issue #28: Automatisierungen & Events
+  - Events für HA-Automations (plan_generated, shopping_list_ready, etc.)
+  - Automation Blueprints
+  - Persistente Notifications
+- Issue #29: Lovelace Cards
+  - Wochenplan-Card (7×2 Grid, Rezeptauswahl)
+  - Einkaufslisten-Card (Tabs Bioland/Rewe, Checkboxen)
+
+**Installation (privates Repo):**
+```bash
+# Auf Home Assistant
+cd /addons && git clone <repo> ki_essensplaner
+# Add-on über UI installieren
+# Custom Component nach /config/custom_components/ kopieren
+```
 
 ## User Stories
 - Als User lade ich OneNote-Pläne hoch → Agent leitet Zutaten-Vorlieben + Aufwand-Profile ab.
