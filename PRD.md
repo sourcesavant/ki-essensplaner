@@ -72,6 +72,7 @@ print(result.summary())
 - wöchentliche Aktualisierungsmöglichkeit für das Profil
 - Bewertungsmöglichkeit von Rezepten
 - Ausschluss von Zutaten; Modifikation von Rezepten durch Ersatz von ungewünschten Zutaten durch ähnliche Zutaten
+- Bereitstellung von Einkauflisten (aggregiert)
 
 ### Phase 6: Integration in HA-Dashboard 🔜
 - User Interface (MQTT/REST API)
