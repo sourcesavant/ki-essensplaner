@@ -23,7 +23,11 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from src.agents.models import WeeklyRecommendation
-from src.core.database import get_connection
+from src.core.database import (
+    get_available_base_ingredients,
+    get_connection,
+    get_ingredient_synonyms,
+)
 
 
 @dataclass
@@ -85,6 +89,17 @@ class ShoppingList:
         lines.append(f"({len(self.items)} Positionen für {self.recipe_count} Rezepte)")
         return "\n".join(lines)
 
+    def split_by_store(self) -> "SplitShoppingList":
+        """Split the shopping list by store (Bioland vs Rewe).
+
+        Items available at Bioland Hüsgen go to the Bioland list,
+        everything else goes to Rewe.
+
+        Returns:
+            SplitShoppingList with bioland and rewe lists
+        """
+        return split_shopping_list_by_store(self)
+
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -98,6 +113,68 @@ class ShoppingList:
                     "recipes": item.recipes,
                 }
                 for item in self.items
+            ],
+        }
+
+
+@dataclass
+class SplitShoppingList:
+    """Shopping list split by store."""
+
+    bioland: list[ShoppingItem] = field(default_factory=list)
+    rewe: list[ShoppingItem] = field(default_factory=list)
+    week_start: str = ""
+
+    def __str__(self) -> str:
+        lines = [f"Einkaufslisten für Woche ab {self.week_start}", ""]
+
+        # Bioland list
+        lines.append("=" * 40)
+        lines.append("BIOLAND HÜSGEN")
+        lines.append("=" * 40)
+        if self.bioland:
+            for item in sorted(self.bioland, key=lambda x: x.sort_key):
+                lines.append(f"- {item}")
+        else:
+            lines.append("(keine Artikel)")
+        lines.append(f"\n({len(self.bioland)} Positionen)")
+
+        lines.append("")
+
+        # Rewe list
+        lines.append("=" * 40)
+        lines.append("REWE")
+        lines.append("=" * 40)
+        if self.rewe:
+            for item in sorted(self.rewe, key=lambda x: x.sort_key):
+                lines.append(f"- {item}")
+        else:
+            lines.append("(keine Artikel)")
+        lines.append(f"\n({len(self.rewe)} Positionen)")
+
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "week_start": self.week_start,
+            "bioland": [
+                {
+                    "ingredient": item.ingredient,
+                    "amount": item.amount,
+                    "unit": item.unit,
+                    "recipes": item.recipes,
+                }
+                for item in self.bioland
+            ],
+            "rewe": [
+                {
+                    "ingredient": item.ingredient,
+                    "amount": item.amount,
+                    "unit": item.unit,
+                    "recipes": item.recipes,
+                }
+                for item in self.rewe
             ],
         }
 
@@ -189,6 +266,67 @@ def _can_aggregate(unit1: str | None, unit2: str | None) -> bool:
         return True
 
     return False
+
+
+def _is_available_at_bioland(ingredient: str, available: set[str]) -> bool:
+    """Check if an ingredient is available at Bioland.
+
+    Args:
+        ingredient: Normalized ingredient name
+        available: Set of available base ingredients at Bioland
+
+    Returns:
+        True if available at Bioland
+    """
+    ingredient_lower = ingredient.lower()
+
+    # Direct match
+    if ingredient_lower in available:
+        return True
+
+    # Check synonyms
+    synonyms = get_ingredient_synonyms(ingredient_lower)
+    if synonyms & available:
+        return True
+
+    # Fuzzy match: check if ingredient is contained in any available item or vice versa
+    for avail in available:
+        if ingredient_lower in avail or avail in ingredient_lower:
+            return True
+
+    return False
+
+
+def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingList:
+    """Split a shopping list into Bioland and Rewe lists.
+
+    Items available at Bioland Hüsgen go to the Bioland list,
+    everything else goes to Rewe.
+
+    Args:
+        shopping_list: The aggregated shopping list
+
+    Returns:
+        SplitShoppingList with bioland and rewe lists
+    """
+    # Get available ingredients at Bioland
+    available = get_available_base_ingredients("bioland_huesgen")
+    available_lower = {ing.lower() for ing in available}
+
+    bioland_items = []
+    rewe_items = []
+
+    for item in shopping_list.items:
+        if _is_available_at_bioland(item.ingredient, available_lower):
+            bioland_items.append(item)
+        else:
+            rewe_items.append(item)
+
+    return SplitShoppingList(
+        bioland=bioland_items,
+        rewe=rewe_items,
+        week_start=shopping_list.week_start,
+    )
 
 
 def generate_shopping_list(plan: WeeklyRecommendation) -> ShoppingList:
