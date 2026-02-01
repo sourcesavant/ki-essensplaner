@@ -81,10 +81,13 @@ print(result.summary())
   - Nebenzutat: Rezept bleibt, Alternativen werden vorgeschlagen
   - Hauptzutat: Rezept wird ausgeschlossen
   - Ergebnisse werden gecached
+- Bioland Auto-Update: Wöchentliche Aktualisierung der Produktverfügbarkeit beim Agent-Start
 
-### Phase 6: Lernfunktion + Interaktion 🔜
-- Bereitstellung des Wochenplans, Angebot von mehreren Rezepten pro Slot
-- Bereitstellung von Einkauflisten (aggregiert)
+### Phase 6: Wochenplan + Einkaufslisten 🔜
+- Issue #19: Erstelle Wochenplan
+- Issue #20: Mache mehrere Vorschläge pro Slot für den Wochenplan
+- Issue #21: Aggregiere Zutaten aus Wochenplan für Einkaufsliste (spezifisch, nicht generisch)
+- Issue #22: Teile Einkauflisten auf für Bioland Hüsgen und Rewe
 
 ### Phase 7: Integration in HA-Dashboard 🔜
 - User Interface (MQTT/REST API)
