@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 1.5 (Update: Phase 4 abgeschlossen, 01.02.2026)
+**Version:** 1.6 (Update: Phase 5 abgeschlossen, 01.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -26,7 +26,7 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - Sprache: Python 3.12 (venv).
 - KI: gpt-4o-mini (Scoring/Planung/Normalisierung), gpt-4o (Profil-Ableitung).
 - Daten: SQLite (data/local/mealplanner.db), JSON (data/raw/all_recipes.json).
-- DB-Tabellen: recipes, meal_plans, meals, parsed_ingredients, available_products.
+- DB-Tabellen: recipes, meal_plans, meals, parsed_ingredients, available_products, recipe_ratings, excluded_ingredients.
 - Scraping: Playwright (eatsmarter.de Suche), recipe-scrapers (Rezept-Details), BeautifulSoup (bioland-huesgen.de).
 - Importer: MS Graph API (OneNote).
 - Tools: PyCharm, GitHub Projects/Issues, plugged.in MCP.
@@ -68,10 +68,19 @@ result = run_search_agent(target_day="Mittwoch", target_slot="Abendessen")  # Ei
 print(result.summary())
 ```
 
-### Phase 5: Lernfunktion + Interaktion 🔜
-- wöchentliche Aktualisierungsmöglichkeit für das Profil
-- Bewertungsmöglichkeit von Rezepten
-- Ausschluss von Zutaten; Modifikation von Rezepten durch Ersatz von ungewünschten Zutaten durch ähnliche Zutaten
+### Phase 5: Lernfunktion + Interaktion ✅
+- Issue #16 ✅: Wöchentliche Profil-Aktualisierung (auto-update beim Agent-Start wenn >7 Tage alt)
+- Issue #17 ✅: Rezept-Bewertungen (1-5 Sterne)
+  - 1 Stern: Blacklist (Rezept ausgeschlossen)
+  - 2 Sterne: -15% Score-Multiplikator
+  - 3 Sterne: Neutral
+  - 4 Sterne: +10% Score-Multiplikator
+  - 5 Sterne: +20% Score-Multiplikator
+- Issue #18 ✅: Zutaten-Ausschluss mit GPT-basierter Ersetzbarkeit
+  - GPT-4o-mini prüft ob Zutat ersetzbar ist (Haupt- vs. Nebenzutat)
+  - Nebenzutat: Rezept bleibt, Alternativen werden vorgeschlagen
+  - Hauptzutat: Rezept wird ausgeschlossen
+  - Ergebnisse werden gecached
 
 ### Phase 6: Lernfunktion + Interaktion 🔜
 - Bereitstellung des Wochenplans, Angebot von mehreren Rezepten pro Slot
