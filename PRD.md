@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 1.6 (Update: Phase 5 abgeschlossen, 01.02.2026)
+**Version:** 1.7 (Update: Phase 6 abgeschlossen, 01.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -83,11 +83,43 @@ print(result.summary())
   - Ergebnisse werden gecached
 - Bioland Auto-Update: Wöchentliche Aktualisierung der Produktverfügbarkeit beim Agent-Start
 
-### Phase 6: Wochenplan + Einkaufslisten 🔜
-- Issue #19: Erstelle Wochenplan
-- Issue #20: Mache mehrere Vorschläge pro Slot für den Wochenplan
-- Issue #21: Aggregiere Zutaten aus Wochenplan für Einkaufsliste (spezifisch, nicht generisch)
-- Issue #22: Teile Einkauflisten auf für Bioland Hüsgen und Rewe
+### Phase 6: Wochenplan + Einkaufslisten ✅
+- Issue #19 ✅: Wochenplan mit User-Auswahl
+  - 5 Vorschläge pro Slot (14 Slots = 7 Tage × 2 Mahlzeiten)
+  - `selected_index` für User-Auswahl (Default: Top-Rezept)
+  - JSON-Export für HA-Integration vorbereitet
+  - Persistenz in `data/local/weekly_plan.json`
+- Issue #20 ✅: (kombiniert mit #19)
+- Issue #21 ✅: Einkaufsliste aggregieren
+  - Gruppierung nach `name_normalized` (spezifisch, nicht generisch)
+  - Mengen mit gleicher Einheit werden addiert
+  - Verschiedene Einheiten bleiben separat
+- Issue #22 ✅: Aufteilen Bioland/Rewe
+  - Bioland-Verfügbarkeit über `available_products` Tabelle
+  - Matching mit Synonymen und Fuzzy-Match
+
+**Verwendung:**
+```python
+from src.agents import run_search_agent, load_weekly_plan
+from src.shopping import generate_shopping_list
+
+# Wochenplan generieren
+plan = run_search_agent()
+
+# Oder gespeicherten Plan laden
+plan = load_weekly_plan()
+
+# User wählt Rezept für Slot (Index 0-4)
+plan.select_recipe("Montag", "Abendessen", 1)
+
+# Einkaufsliste generieren
+shopping_list = generate_shopping_list(plan)
+print(shopping_list)
+
+# Nach Store aufteilen
+split = shopping_list.split_by_store()
+print(split)  # Bioland + Rewe Listen
+```
 
 ### Phase 7: Integration in HA-Dashboard 🔜
 - User Interface (MQTT/REST API)
