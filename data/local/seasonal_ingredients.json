@@ -1,0 +1,7 @@
+{
+  "description": "Saisonkalender für deutsche Zutaten. Monat 1-12. Liste = verfügbare Monate.",
+  "version": "1.0",
+  "notes": "Ergänzt/überschreibt die Standardwerte in seasonality.py. Entfernen um nur Defaults zu nutzen.",
+  "ingredients": {
+  }
+}
