@@ -72,9 +72,12 @@ print(result.summary())
 - wöchentliche Aktualisierungsmöglichkeit für das Profil
 - Bewertungsmöglichkeit von Rezepten
 - Ausschluss von Zutaten; Modifikation von Rezepten durch Ersatz von ungewünschten Zutaten durch ähnliche Zutaten
+
+### Phase 5: Lernfunktion + Interaktion 🔜
+- Bereitstellung des Wochenplans, Angebot von mehreren Rezepten pro Slot
 - Bereitstellung von Einkauflisten (aggregiert)
 
-### Phase 6: Integration in HA-Dashboard 🔜
+### Phase 7: Integration in HA-Dashboard 🔜
 - User Interface (MQTT/REST API)
 
 ## User Stories
