@@ -33,6 +33,15 @@ WEIGHT_TIME_COMPATIBILITY = 0.25
 WEIGHT_BIOLAND_AVAILABILITY = 0.20
 WEIGHT_SEASONALITY = 0.15
 
+# Rating multipliers for user ratings (1-5 stars)
+RATING_MULTIPLIERS = {
+    1: 0.0,   # Blacklist (Score = 0, filtered in is_recipe_viable)
+    2: 0.85,  # -15%
+    3: 1.00,  # Neutral
+    4: 1.10,  # +10%
+    5: 1.20,  # +20%
+}
+
 # Availability filter threshold
 # Recipes with less than this percentage of obtainable ingredients are excluded
 MIN_OBTAINABLE_RATIO = 0.5  # 50% of ingredients must be obtainable
@@ -51,6 +60,8 @@ class ScoringContext:
         profile: User preference profile (from preference_profile.json)
         available_ingredients: Set of base ingredients available at Bioland
         month: Month for seasonality check (1-12), defaults to current month
+        recipe_ratings: Dict mapping recipe_id to rating (1-5)
+        blacklisted_ids: Set of recipe IDs that are blacklisted (rating = 1)
     """
 
     weekday: str
@@ -58,6 +69,8 @@ class ScoringContext:
     profile: dict
     available_ingredients: set[str] = field(default_factory=set)
     month: int | None = None
+    recipe_ratings: dict[int, int] = field(default_factory=dict)
+    blacklisted_ids: set[int] = field(default_factory=set)
 
     def __post_init__(self):
         if self.month is None:
@@ -82,6 +95,10 @@ class ScoreBreakdown:
     matched_favorite_ingredients: list[str] = field(default_factory=list)
     available_at_bioland: list[str] = field(default_factory=list)
     out_of_season: list[str] = field(default_factory=list)
+
+    # User rating info
+    rating_multiplier: float = 1.0
+    user_rating: int | None = None
 
 
 def load_profile(profile_path: Path | None = None) -> dict:
@@ -433,8 +450,9 @@ def is_recipe_viable(
     """Check if a recipe is viable (enough ingredients can be obtained).
 
     A recipe is viable if:
-    1. All key ingredients (those in the title) can be obtained, AND
-    2. At least `min_obtainable_ratio` of all ingredients can be obtained
+    1. Recipe is not blacklisted by user (1 star rating), AND
+    2. All key ingredients (those in the title) can be obtained, AND
+    3. At least `min_obtainable_ratio` of all ingredients can be obtained
 
     Args:
         recipe: Recipe to check
@@ -444,6 +462,10 @@ def is_recipe_viable(
     Returns:
         Tuple of (is_viable, unobtainable_ingredients, obtainable_ratio)
     """
+    # Check blacklist first
+    if recipe.id and recipe.id in context.blacklisted_ids:
+        return (False, ["Vom User ausgeschlossen (1 Stern)"], 0.0)
+
     # Extract base ingredients
     recipe_ingredients = _get_recipe_base_ingredients(recipe, context.profile)
 
@@ -488,6 +510,13 @@ def generate_reasoning(score: ScoreBreakdown) -> str:
         German-language reasoning string
     """
     reasons = []
+
+    # User rating info
+    if score.user_rating is not None:
+        if score.user_rating >= 4:
+            reasons.append(f"Favorit ({score.user_rating} Sterne)")
+        elif score.user_rating == 2:
+            reasons.append("Weniger bevorzugt (2 Sterne)")
 
     # Ingredient affinity
     if score.ingredient_affinity >= 80:
@@ -566,6 +595,15 @@ def calculate_score(
         seasonality * WEIGHT_SEASONALITY
     )
 
+    # Apply user rating multiplier
+    user_rating = None
+    rating_multiplier = 1.0
+    if recipe.id:
+        user_rating = context.recipe_ratings.get(recipe.id)
+        if user_rating is not None:
+            rating_multiplier = RATING_MULTIPLIERS[user_rating]
+            total_score *= rating_multiplier
+
     # Create score breakdown
     score = ScoreBreakdown(
         total_score=round(total_score, 1),
@@ -576,6 +614,8 @@ def calculate_score(
         matched_favorite_ingredients=matched_favorites,
         available_at_bioland=available_at_bioland,
         out_of_season=out_of_season,
+        rating_multiplier=rating_multiplier,
+        user_rating=user_rating,
     )
 
     # Generate reasoning

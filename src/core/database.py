@@ -75,6 +75,18 @@ CREATE INDEX IF NOT EXISTS idx_parsed_ingredients_recipe ON parsed_ingredients(r
 CREATE INDEX IF NOT EXISTS idx_parsed_ingredients_base ON parsed_ingredients(base_ingredient);
 CREATE INDEX IF NOT EXISTS idx_available_products_source ON available_products(source);
 CREATE INDEX IF NOT EXISTS idx_available_products_base ON available_products(base_ingredient);
+
+-- Recipe ratings (user ratings 1-5 stars)
+CREATE TABLE IF NOT EXISTS recipe_ratings (
+    id INTEGER PRIMARY KEY,
+    recipe_id INTEGER NOT NULL UNIQUE,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    rated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_ratings_recipe ON recipe_ratings(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_recipe_ratings_rating ON recipe_ratings(rating);
 """
 
 
@@ -532,3 +544,88 @@ def is_ingredient_available(base_ingredient: str, source: str | None = None) -> 
 
     # Check if any synonym is available
     return bool(synonyms & available)
+
+
+# Recipe Rating CRUD operations
+
+
+def rate_recipe(recipe_id: int, rating: int) -> None:
+    """Speichert oder aktualisiert Bewertung für ein Rezept (1-5 Sterne).
+
+    Args:
+        recipe_id: ID of the recipe to rate
+        rating: Rating value (1-5 stars)
+
+    Raises:
+        ValueError: If rating is not between 1 and 5
+    """
+    if not 1 <= rating <= 5:
+        raise ValueError(f"Rating must be between 1 and 5, got {rating}")
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO recipe_ratings (recipe_id, rating, rated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(recipe_id) DO UPDATE SET rating = ?, rated_at = ?
+            """,
+            (recipe_id, rating, datetime.now().isoformat(), rating, datetime.now().isoformat()),
+        )
+
+
+def get_recipe_rating(recipe_id: int) -> int | None:
+    """Gibt die Bewertung eines Rezepts zurück (1-5) oder None.
+
+    Args:
+        recipe_id: ID of the recipe
+
+    Returns:
+        Rating (1-5) or None if not rated
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT rating FROM recipe_ratings WHERE recipe_id = ?", (recipe_id,)
+        ).fetchone()
+        if row:
+            return row["rating"]
+        return None
+
+
+def get_all_ratings() -> dict[int, int]:
+    """Gibt alle Bewertungen als {recipe_id: rating} zurück.
+
+    Returns:
+        Dict mapping recipe_id to rating
+    """
+    with get_connection() as conn:
+        rows = conn.execute("SELECT recipe_id, rating FROM recipe_ratings").fetchall()
+        return {row["recipe_id"]: row["rating"] for row in rows}
+
+
+def get_blacklisted_recipe_ids() -> set[int]:
+    """Gibt IDs aller mit 1 Stern bewerteten Rezepte zurück.
+
+    Returns:
+        Set of recipe IDs that are blacklisted (rating = 1)
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT recipe_id FROM recipe_ratings WHERE rating = 1"
+        ).fetchall()
+        return {row["recipe_id"] for row in rows}
+
+
+def delete_recipe_rating(recipe_id: int) -> bool:
+    """Löscht eine Bewertung. Gibt True zurück wenn gelöscht.
+
+    Args:
+        recipe_id: ID of the recipe
+
+    Returns:
+        True if a rating was deleted, False if no rating existed
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM recipe_ratings WHERE recipe_id = ?", (recipe_id,)
+        )
+        return cursor.rowcount > 0

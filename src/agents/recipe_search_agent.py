@@ -29,7 +29,9 @@ from src.agents.models import (
     WeeklyRecommendation,
 )
 from src.core.database import (
+    get_all_ratings,
     get_available_base_ingredients,
+    get_blacklisted_recipe_ids,
     get_connection,
     get_recipe,
 )
@@ -476,22 +478,30 @@ def run_search_agent(
     available = get_available_base_ingredients("bioland_huesgen")
     print(f"   {len(available)} ingredients available")
 
+    # Load ratings
+    print("\n3. Loading ratings...")
+    ratings = get_all_ratings()
+    blacklisted = get_blacklisted_recipe_ids()
+    print(f"   {len(ratings)} ratings, {len(blacklisted)} blacklisted")
+
     # Create scoring context
     context = ScoringContext(
         weekday=target_day or "Montag",  # Default for scoring
         meal_slot=target_slot or "Abendessen",
         profile=profile,
         available_ingredients=available,
+        recipe_ratings=ratings,
+        blacklisted_ids=blacklisted,
     )
 
     # Determine slots to search
-    print("\n3. Determining slots...")
+    print("\n4. Determining slots...")
     groups = _get_slot_groups_to_search(target_day, target_slot)
     all_slots = [(day, slot) for slots in groups.values() for day, slot in slots]
     print(f"   {len(all_slots)} slots to fill")
 
     # Load favorites from DB
-    print("\n4. Loading favorites from DB...")
+    print("\n5. Loading favorites from DB...")
     favorites_raw = _get_favorites_from_db()
     print(f"   {len(favorites_raw)} recipes found in DB")
 
@@ -499,23 +509,23 @@ def run_search_agent(
     print(f"   {len(favorites)} viable favorites after filtering")
 
     # Build search queries
-    print("\n5. Building search queries...")
+    print("\n6. Building search queries...")
     queries = _build_search_queries(groups, profile)
     for q in queries:
         print(f"   {q}")
 
     # Search new recipes
-    print("\n6. Searching new recipes...")
+    print("\n7. Searching new recipes...")
     new_recipes_raw = _search_new_recipes(queries, context)
     print(f"   {len(new_recipes_raw)} candidates found")
 
     # Load details for top candidates
-    print("\n7. Loading details for top candidates...")
+    print("\n8. Loading details for top candidates...")
     new_recipes = _load_recipe_details(new_recipes_raw, context)
     print(f"   {len(new_recipes)} viable new recipes")
 
     # Assign recipes to slots
-    print("\n8. Assigning recipes to slots...")
+    print("\n9. Assigning recipes to slots...")
     slot_recommendations = _assign_recipes_to_slots(
         all_slots, favorites, new_recipes, context
     )
