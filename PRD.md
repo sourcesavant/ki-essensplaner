@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 1.4 (Update: Issue #13-15 Such-Agent, 01.02.2026)
+**Version:** 1.5 (Update: Phase 4 abgeschlossen, 01.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -27,7 +27,8 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - KI: gpt-4o-mini (Scoring/Planung/Normalisierung), gpt-4o (Profil-Ableitung).
 - Daten: SQLite (data/local/mealplanner.db), JSON (data/raw/all_recipes.json).
 - DB-Tabellen: recipes, meal_plans, meals, parsed_ingredients, available_products.
-- Importer: MS Graph API (OneNote), recipe-scrapers (eatsmarter.de + Multi-Site), BeautifulSoup (bioland-huesgen.de).
+- Scraping: Playwright (eatsmarter.de Suche), recipe-scrapers (Rezept-Details), BeautifulSoup (bioland-huesgen.de).
+- Importer: MS Graph API (OneNote).
 - Tools: PyCharm, GitHub Projects/Issues, plugged.in MCP.
 
 ## Phasen & Issues
@@ -44,25 +45,36 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - Issue #5: Normalisiere Bezeichnung von Zutaten und Mengen
 - Issue #6: Leite Vorlieben-Profil ab (TF-IDF für Zutaten, Aufwand-Klassen pro Wochentag/Slot)
 
-### Phase 4: Planner + Search 🔄
+### Phase 4: Planner + Search ✅
 - Issue #10 ✅: Bioland Hüsgen Scraper (Verfügbarkeit saisonaler Produkte)
 - Issue #12 ✅: Saisonalitäts-Modul (Kalender für deutsche Produkte)
 - Issue #13 ✅: Eatsmarter Playwright Scraper (Rezeptsuche mit Zutaten-Filter)
 - Issue #14 ✅: Rezept-Scoring-System
   - Gewichtete Formel: Zutaten-Affinität (40%) + Zeit-Passung (25%) + Bioland (20%) + Saison (15%)
   - Verfügbarkeits-Filter: Rezepte mit nicht-beschaffbaren Hauptzutaten werden ausgeschlossen
-- Issue #15 🔄: Such-Agent für Rezept-Empfehlungen
-  - **Hybrid-Suche**: 3-4 gruppierte Suchanfragen (schnelle Mittagessen vs. aufwändige Abendessen)
-  - **60/40-Mix**: 60% Favoriten aus DB (bereits gekochte Rezepte) + 40% neue von eatsmarter
-  - **Detail-Nachladen**: Grob-Filter nach Titel/Zeit, dann Zutaten nur für Top-10 Kandidaten laden
+- Issue #15 ✅: Such-Agent für Rezept-Empfehlungen
+  - **Hybrid-Suche**: 3 gruppierte Suchanfragen (quick/normal/elaborate)
+  - **60/40-Mix**: 60% Favoriten aus DB + 40% neue von eatsmarter
+  - **Detail-Nachladen**: Zutaten nur für Top-10 Kandidaten laden via recipe-scrapers
 
-### Phase: 5 Lernfunktion + Interaktion
+**Verwendung:**
+```python
+from src.agents import run_search_agent
+
+result = run_search_agent()  # Volle Woche
+result = run_search_agent(target_day="Mittwoch")  # Ein Tag
+result = run_search_agent(target_day="Mittwoch", target_slot="Abendessen")  # Ein Slot
+
+print(result.summary())
+```
+
+### Phase 5: Lernfunktion + Interaktion 🔜
 - wöchentliche Aktualisierungsmöglichkeit für das Profil
 - Bewertungsmöglichkeit von Rezepten
 - Ausschluss von Zutaten; Modifikation von Rezepten durch Ersatz von ungewünschten Zutaten durch ähnliche Zutaten
 
-### Integration in HA-Dashboard
-- User Interface
+### Phase 6: Integration in HA-Dashboard 🔜
+- User Interface (MQTT/REST API)
 
 ## User Stories
 - Als User lade ich OneNote-Pläne hoch → Agent leitet Zutaten-Vorlieben + Aufwand-Profile ab.
