@@ -20,6 +20,7 @@ Issue #6: Leite Vorlieben-Profil aus Daten ab
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,12 @@ PROFILE_PATH = DATA_DIR / "local" / "preference_profile.json"
 
 # Threshold for filtering universal ingredients (appear in >70% of recipes)
 UNIVERSAL_INGREDIENT_THRESHOLD = 0.70
+
+# Profile update interval in days
+PROFILE_UPDATE_INTERVAL_DAYS = 7
+
+# Profile version for tracking schema changes
+PROFILE_VERSION = "1.0"
 
 
 @dataclass
@@ -334,6 +341,11 @@ def generate_profile(include_pseudo: bool = True) -> dict[str, Any]:
     total_meals = total_with_recipe + total_pseudo
 
     return {
+        "metadata": {
+            "last_profile_update": datetime.now().isoformat(),
+            "version": PROFILE_VERSION,
+            "meals_analyzed": total_meals,
+        },
         "universal_ingredients": sorted(universal),
         "ingredient_preferences": ingredient_prefs[:50],  # Top 50
         "weekday_patterns": weekday_patterns,
@@ -380,6 +392,96 @@ def load_profile() -> dict | None:
         with open(PROFILE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
+
+
+def get_profile_age() -> timedelta | None:
+    """Get the age of the current profile.
+
+    Returns:
+        timedelta since last profile update, or None if no profile exists
+        or no metadata available
+    """
+    profile = load_profile()
+    if not profile:
+        return None
+
+    metadata = profile.get("metadata", {})
+    last_update = metadata.get("last_profile_update")
+
+    if not last_update:
+        # Profile exists but has no metadata - treat as very old
+        return timedelta(days=365)
+
+    try:
+        last_update_dt = datetime.fromisoformat(last_update)
+        return datetime.now() - last_update_dt
+    except (ValueError, TypeError):
+        return timedelta(days=365)
+
+
+def is_profile_outdated(max_age_days: int = PROFILE_UPDATE_INTERVAL_DAYS) -> bool:
+    """Check if the profile needs updating.
+
+    Args:
+        max_age_days: Maximum age in days before profile is considered outdated
+
+    Returns:
+        True if profile is outdated or doesn't exist, False otherwise
+    """
+    age = get_profile_age()
+
+    if age is None:
+        # No profile exists
+        return True
+
+    return age > timedelta(days=max_age_days)
+
+
+def ensure_profile_current(
+    force: bool = False,
+    max_age_days: int = PROFILE_UPDATE_INTERVAL_DAYS,
+) -> tuple[dict, bool]:
+    """Ensure the preference profile is current, regenerating if needed.
+
+    This is the main entry point for agents that need the profile.
+    It checks if the profile exists and is recent enough, regenerating
+    it if necessary.
+
+    Args:
+        force: Force regeneration even if profile is current
+        max_age_days: Maximum age in days before triggering update
+
+    Returns:
+        Tuple of (profile_dict, was_updated)
+        - profile_dict: The current preference profile
+        - was_updated: True if the profile was regenerated
+    """
+    if force:
+        print(f"Forcing profile regeneration...")
+        profile = generate_profile()
+        save_profile(profile)
+        return profile, True
+
+    if is_profile_outdated(max_age_days):
+        age = get_profile_age()
+        if age is None:
+            print("No profile found. Generating new profile...")
+        else:
+            print(f"Profile is {age.days} days old. Regenerating...")
+
+        profile = generate_profile()
+        save_profile(profile)
+        return profile, True
+
+    # Profile is current
+    profile = load_profile()
+    if profile is None:
+        # Should not happen given is_profile_outdated check, but be safe
+        profile = generate_profile()
+        save_profile(profile)
+        return profile, True
+
+    return profile, False
 
 
 def print_profile_summary(profile: dict) -> None:
@@ -449,9 +551,36 @@ def print_profile_summary(profile: dict) -> None:
 
 
 if __name__ == "__main__":
-    profile = generate_profile()
-    print_profile_summary(profile)
+    import argparse
 
-    # Save profile for later use
-    path = save_profile(profile)
-    print(f"\nProfil gespeichert: {path}")
+    parser = argparse.ArgumentParser(description="Generate or update preference profile")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force regeneration even if profile is current",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Only check profile age, don't regenerate",
+    )
+    args = parser.parse_args()
+
+    if args.check:
+        age = get_profile_age()
+        if age is None:
+            print("Kein Profil vorhanden.")
+        else:
+            print(f"Profil-Alter: {age.days} Tage, {age.seconds // 3600} Stunden")
+            if is_profile_outdated():
+                print(f"Status: VERALTET (>{PROFILE_UPDATE_INTERVAL_DAYS} Tage)")
+            else:
+                print(f"Status: AKTUELL (<={PROFILE_UPDATE_INTERVAL_DAYS} Tage)")
+    else:
+        profile, was_updated = ensure_profile_current(force=args.force)
+        print_profile_summary(profile)
+
+        if was_updated:
+            print(f"\nProfil neu generiert und gespeichert: {PROFILE_PATH}")
+        else:
+            print(f"\nProfil ist aktuell (< {PROFILE_UPDATE_INTERVAL_DAYS} Tage alt): {PROFILE_PATH}")

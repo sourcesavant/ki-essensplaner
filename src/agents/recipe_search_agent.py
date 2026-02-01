@@ -34,11 +34,11 @@ from src.core.database import (
     get_recipe,
 )
 from src.models.recipe import Recipe
+from src.profile.preference_profile import ensure_profile_current
 from src.scoring.recipe_scorer import (
     ScoringContext,
     calculate_score,
     is_recipe_viable,
-    load_profile,
 )
 
 # Target ratio for favorites vs new recipes
@@ -464,11 +464,11 @@ def run_search_agent(
     print("Recipe Search Agent")
     print("=" * 60)
 
-    # Load profile
+    # Load profile (auto-update if outdated)
     print("\n1. Loading profile...")
-    profile = load_profile()
-    if not profile:
-        raise ValueError("No preference profile found. Run preference_profile.py first.")
+    profile, was_updated = ensure_profile_current()
+    if was_updated:
+        print("   Profile was regenerated (outdated or missing)")
     print(f"   Profile loaded: {profile.get('summary', {}).get('total_meals', 0)} meals")
 
     # Load Bioland availability
