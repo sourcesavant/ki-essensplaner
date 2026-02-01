@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
-**Repo:** https://github.com/sourcesavant/ki-essensplaner  
-**Version:** 1.3 (Update: Issue #10 Bioland-Scraper, 01.02.2026)  
+**Repo:** https://github.com/sourcesavant/ki-essensplaner
+**Version:** 1.4 (Update: Issue #13-15 Such-Agent, 01.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -9,8 +9,14 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 
 ## Kern-Features (Priorisiert)
 1. **Profil-basiertes Lernen (Content-Based Filtering)**: Analysiert OneNote-Pläne → Vorlieben (Zutaten-Frequenz/Häufigkeit, Aufwand-Klassen: quick/normal/long pro Wochentag/Slot).
-2. **Intelligentes Rezept-Scouting**: Sucht auf eatsmarter.de + anderen Sites nach Matches (Score >80% zu Profil: Zutaten-Ähnlichkeit, Aufwand-Passung). Berücksichtigung von Saisonalität, Verfügbarkeit von Produkten auf bevorzugter Einkaufwebseite
-3. **Hybrider Wochenplaner**: 7-Tage-Mix (Favoriten 60% + Neue 40%).
+2. **Intelligentes Rezept-Scouting**:
+   - Sucht auf eatsmarter.de nach Matches mittels Playwright-Scraper
+   - Scoring-Formel: Zutaten-Affinität (40%) + Zeit-Passung (25%) + Bioland-Verfügbarkeit (20%) + Saisonalität (15%)
+   - Verfügbarkeits-Filter: Rezepte werden ausgeschlossen, wenn Hauptzutaten weder bei Bioland noch saisonal verfügbar sind
+3. **Hybrider Wochenplaner**:
+   - 7-Tage-Mix: 60% Favoriten (bereits gekochte Rezepte aus DB) + 40% Neue (von eatsmarter)
+   - Hybrid-Suche: Slots werden gruppiert (schnelle Mittagessen vs. aufwändige Abendessen) für effiziente Suchanfragen
+   - Detail-Nachladen: Zutaten-Details nur für Top-Kandidaten laden (Performance-Optimierung)
 4. **Lernfunktion** Aktualisiert wöchentlich das Profil.
 5. **Rückmeldung** User kann Rezepte bewerten. User kann Zutaten ausschließen. Rezepte mit dieser Zutat werden trotzdem berücksichtigt, wenn Zutat durch ähnliche Zutat ersetzt werden kann.
 6. **Einkaufslisten**: Aggregierte Zutaten (Mengen, Kategorien).
@@ -39,13 +45,16 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - Issue #6: Leite Vorlieben-Profil ab (TF-IDF für Zutaten, Aufwand-Klassen pro Wochentag/Slot)
 
 ### Phase 4: Planner + Search 🔄
-- Issue #10: Verfügbarkeit von saisonalen Produkten auf Bioland Hüsgen (bioland-huesgen.de)
-  - Scraper für 4 Kategorien: Gemüse/Pilze, Salate/Kräuter, Kartoffeln, Obst/Nüsse
-  - GPT-basierte Normalisierung der Produktnamen (gleiche base_ingredient wie Rezepte)
-  - Synonym-Mapping für deutsche Varianten (Karotte↔Möhre, Lauch↔Porree, etc.)
-  - Wöchentlicher Refresh (saisonales Angebot ändert sich)
-- Intelligentes Rezept-Scouting (Scoring, Saisonalität, Verfügbarkeit)
-- Hybrider Wochenplaner (60% Favoriten + 40% Neue)
+- Issue #10 ✅: Bioland Hüsgen Scraper (Verfügbarkeit saisonaler Produkte)
+- Issue #12 ✅: Saisonalitäts-Modul (Kalender für deutsche Produkte)
+- Issue #13 ✅: Eatsmarter Playwright Scraper (Rezeptsuche mit Zutaten-Filter)
+- Issue #14 ✅: Rezept-Scoring-System
+  - Gewichtete Formel: Zutaten-Affinität (40%) + Zeit-Passung (25%) + Bioland (20%) + Saison (15%)
+  - Verfügbarkeits-Filter: Rezepte mit nicht-beschaffbaren Hauptzutaten werden ausgeschlossen
+- Issue #15 🔄: Such-Agent für Rezept-Empfehlungen
+  - **Hybrid-Suche**: 3-4 gruppierte Suchanfragen (schnelle Mittagessen vs. aufwändige Abendessen)
+  - **60/40-Mix**: 60% Favoriten aus DB (bereits gekochte Rezepte) + 40% neue von eatsmarter
+  - **Detail-Nachladen**: Grob-Filter nach Titel/Zeit, dann Zutaten nur für Top-10 Kandidaten laden
 
 ### Phase: 5 Lernfunktion + Interaktion
 - wöchentliche Aktualisierungsmöglichkeit für das Profil
