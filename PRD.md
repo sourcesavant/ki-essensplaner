@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner  
-**Version:** 1.2 (Update: Phase 3 Details, 31.01.2026)  
+**Version:** 1.3 (Update: Issue #10 Bioland-Scraper, 01.02.2026)  
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -18,9 +18,10 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 
 ## Tech-Stack
 - Sprache: Python 3.12 (venv).
-- KI: gpt-4o-mini (Scoring/Planung), gpt-4o (Profil-Ableitung).
+- KI: gpt-4o-mini (Scoring/Planung/Normalisierung), gpt-4o (Profil-Ableitung).
 - Daten: SQLite (data/local/mealplanner.db), JSON (data/raw/all_recipes.json).
-- Importer: MS Graph API (OneNote), recipe-scrapers (eatsmarter.de + Multi-Site).
+- DB-Tabellen: recipes, meal_plans, meals, parsed_ingredients, available_products.
+- Importer: MS Graph API (OneNote), recipe-scrapers (eatsmarter.de + Multi-Site), BeautifulSoup (bioland-huesgen.de).
 - Tools: PyCharm, GitHub Projects/Issues, plugged.in MCP.
 
 ## Phasen & Issues
@@ -38,7 +39,11 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 - Issue #6: Leite Vorlieben-Profil ab (TF-IDF für Zutaten, Aufwand-Klassen pro Wochentag/Slot)
 
 ### Phase 4: Planner + Search 🔄
-- Verfügbarkeit von saisonalen Produkten auf präferierten Einkaufwebseiten
+- Issue #10: Verfügbarkeit von saisonalen Produkten auf Bioland Hüsgen (bioland-huesgen.de)
+  - Scraper für 4 Kategorien: Gemüse/Pilze, Salate/Kräuter, Kartoffeln, Obst/Nüsse
+  - GPT-basierte Normalisierung der Produktnamen (gleiche base_ingredient wie Rezepte)
+  - Synonym-Mapping für deutsche Varianten (Karotte↔Möhre, Lauch↔Porree, etc.)
+  - Wöchentlicher Refresh (saisonales Angebot ändert sich)
 - Intelligentes Rezept-Scouting (Scoring, Saisonalität, Verfügbarkeit)
 - Hybrider Wochenplaner (60% Favoriten + 40% Neue)
 

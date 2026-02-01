@@ -57,12 +57,24 @@ CREATE TABLE IF NOT EXISTS parsed_ingredients (
     base_ingredient TEXT
 );
 
+-- Available products from shopping websites (e.g. bioland-huesgen.de)
+CREATE TABLE IF NOT EXISTS available_products (
+    id INTEGER PRIMARY KEY,
+    source TEXT NOT NULL,
+    product_name TEXT NOT NULL,
+    base_ingredient TEXT,
+    category TEXT,
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_recipes_source ON recipes(source);
 CREATE INDEX IF NOT EXISTS idx_meals_plan_id ON meals(meal_plan_id);
 CREATE INDEX IF NOT EXISTS idx_meal_plans_page_id ON meal_plans(onenote_page_id);
 CREATE INDEX IF NOT EXISTS idx_parsed_ingredients_recipe ON parsed_ingredients(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_parsed_ingredients_base ON parsed_ingredients(base_ingredient);
+CREATE INDEX IF NOT EXISTS idx_available_products_source ON available_products(source);
+CREATE INDEX IF NOT EXISTS idx_available_products_base ON available_products(base_ingredient);
 """
 
 
@@ -369,3 +381,154 @@ def _row_to_meal(row: sqlite3.Row) -> Meal:
         recipe_id=row["recipe_id"],
         recipe_title=row["recipe_title"],
     )
+
+
+# Available Products CRUD operations
+
+# German ingredient synonyms - maps to canonical form
+# Used for matching recipe ingredients with available products
+INGREDIENT_SYNONYMS = {
+    # Gemüse
+    "karotte": "möhre",
+    "mohrrübe": "möhre",
+    "gelbe rübe": "möhre",
+    "wurzel": "möhre",
+    "lauch": "porree",
+    "aubergine": "eierfrucht",
+    "zucchino": "zucchini",
+    "paprikaschote": "paprika",
+    "peperoni": "paprika",
+    "broccoli": "brokkoli",
+    "blaukraut": "rotkohl",
+    "rotkraut": "rotkohl",
+    "weißkraut": "weißkohl",
+    "kraut": "weißkohl",
+    "rosenkohl": "kohlsprossen",
+    "champignon": "steinchampignon",
+    "eierschwammerl": "pfifferling",
+    # Kräuter
+    "koriander": "koriandergrün",
+    "schnittlauch": "schnittlauch",
+    "petersilie": "petersilie",
+    # Obst
+    "mandarine": "clementine",
+    "satsuma": "clementine",
+    "orange": "apfelsine",
+    "apfelsine": "orange",
+    # Kartoffeln
+    "erdapfel": "kartoffel",
+    "grundbirne": "kartoffel",
+}
+
+
+def get_ingredient_synonyms(ingredient: str) -> set[str]:
+    """Get all synonyms for an ingredient including itself.
+
+    Returns a set of all names that refer to the same ingredient.
+    """
+    ingredient = ingredient.lower()
+    synonyms = {ingredient}
+
+    # Check if ingredient is a key (maps to canonical)
+    if ingredient in INGREDIENT_SYNONYMS:
+        canonical = INGREDIENT_SYNONYMS[ingredient]
+        synonyms.add(canonical)
+
+    # Check if ingredient is a canonical form (find all that map to it)
+    for syn, canon in INGREDIENT_SYNONYMS.items():
+        if canon == ingredient or syn == ingredient:
+            synonyms.add(syn)
+            synonyms.add(canon)
+
+    return synonyms
+
+
+def clear_available_products(source: str) -> int:
+    """Clear all products from a specific source. Returns number of deleted rows."""
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM available_products WHERE source = ?", (source,))
+        return cursor.rowcount
+
+
+def add_available_product(
+    source: str,
+    product_name: str,
+    base_ingredient: str | None = None,
+    category: str | None = None,
+) -> int:
+    """Add a single available product. Returns the new row ID."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO available_products (source, product_name, base_ingredient, category, scraped_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (source, product_name, base_ingredient, category, datetime.now().isoformat()),
+        )
+        return cursor.lastrowid
+
+
+def add_available_products_batch(
+    products: list[dict],
+) -> int:
+    """Add multiple products in a batch. Each dict needs: source, product_name, and optionally base_ingredient, category."""
+    with get_connection() as conn:
+        now = datetime.now().isoformat()
+        cursor = conn.executemany(
+            """
+            INSERT INTO available_products (source, product_name, base_ingredient, category, scraped_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    p["source"],
+                    p["product_name"],
+                    p.get("base_ingredient"),
+                    p.get("category"),
+                    now,
+                )
+                for p in products
+            ],
+        )
+        return cursor.rowcount
+
+
+def get_available_products(source: str | None = None) -> list[dict]:
+    """Get available products, optionally filtered by source."""
+    with get_connection() as conn:
+        if source:
+            rows = conn.execute(
+                "SELECT * FROM available_products WHERE source = ?", (source,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM available_products").fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_available_base_ingredients(source: str | None = None) -> set[str]:
+    """Get set of unique base ingredients that are currently available."""
+    with get_connection() as conn:
+        if source:
+            rows = conn.execute(
+                "SELECT DISTINCT base_ingredient FROM available_products WHERE source = ? AND base_ingredient IS NOT NULL",
+                (source,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT DISTINCT base_ingredient FROM available_products WHERE base_ingredient IS NOT NULL"
+            ).fetchall()
+        return {row["base_ingredient"] for row in rows}
+
+
+def is_ingredient_available(base_ingredient: str, source: str | None = None) -> bool:
+    """Check if an ingredient is available in the shop.
+
+    Also checks synonyms, so 'karotte' will match 'möhre' in the shop.
+    """
+    available = {i.lower() for i in get_available_base_ingredients(source)}
+
+    # Get all synonyms for the ingredient
+    synonyms = get_ingredient_synonyms(base_ingredient)
+
+    # Check if any synonym is available
+    return bool(synonyms & available)
