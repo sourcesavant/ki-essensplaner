@@ -31,13 +31,13 @@ Automatisierter KI-Agent für personalisierte Wochenpläne: Lernt aus OneNote-Wo
 ### Phase 2: OneNote-Merge ✅
 - Issue #2: OneNote Importer (MS Graph API)
 
-### Phase 3: DB + Profil (Vorlieben) 🔄
+### Phase 3: DB + Profil (Vorlieben) ✅
 - Issue #3: Rufe Rezepte von gespeicherten Links ab (Scraping der OneNote-URLs)
 - Issue #4: Extrahiere Zutaten und Dauer von Rezepten
 - Issue #5: Normalisiere Bezeichnung von Zutaten und Mengen
 - Issue #6: Leite Vorlieben-Profil ab (TF-IDF für Zutaten, Aufwand-Klassen pro Wochentag/Slot)
 
-### Phase 4: Planner + Search ⏳
+### Phase 4: Planner + Search 🔄
 - Verfügbarkeit von saisonalen Produkten auf präferierten Einkaufwebseiten
 - Intelligentes Rezept-Scouting (Scoring, Saisonalität, Verfügbarkeit)
 - Hybrider Wochenplaner (60% Favoriten + 40% Neue)
