@@ -38,6 +38,7 @@ from src.core.database import (
 )
 from src.models.recipe import Recipe
 from src.profile.preference_profile import ensure_profile_current
+from src.scrapers.bioland_huesgen import ensure_bioland_current
 from src.scoring.recipe_scorer import (
     ScoringContext,
     calculate_score,
@@ -474,8 +475,11 @@ def run_search_agent(
         print("   Profile was regenerated (outdated or missing)")
     print(f"   Profile loaded: {profile.get('summary', {}).get('total_meals', 0)} meals")
 
-    # Load Bioland availability
+    # Load Bioland availability (auto-update if outdated)
     print("\n2. Loading Bioland availability...")
+    product_count, bioland_updated = ensure_bioland_current()
+    if bioland_updated:
+        print("   Bioland data was refreshed (outdated or missing)")
     available = get_available_base_ingredients("bioland_huesgen")
     print(f"   {len(available)} ingredients available")
 

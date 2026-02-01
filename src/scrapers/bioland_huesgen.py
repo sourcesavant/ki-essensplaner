@@ -19,11 +19,13 @@ Example usage:
     >>> products = scrape_available_products()
     >>> print(f"Found {len(products)} products")
     >>> refresh_available_products()  # Scrape, normalize, and save to DB
+    >>> ensure_bioland_current()  # Auto-update if data is older than 7 days
 """
 
 import html
 import re
 import time
+from datetime import datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
@@ -31,10 +33,14 @@ from bs4 import BeautifulSoup
 from src.core.database import (
     add_available_products_batch,
     clear_available_products,
+    get_connection,
     init_db,
 )
 
 SOURCE_NAME = "bioland_huesgen"
+
+# Update interval in days (weekly refresh for seasonal products)
+BIOLAND_UPDATE_INTERVAL_DAYS = 7
 
 CATEGORY_URLS = {
     "gemüse_pilze": "https://www.bioland-huesgen.de/m/vom-acker/gemuese-pilze?path=/n_19/g_110",
@@ -246,6 +252,90 @@ def _normalize_products(products: list[dict]) -> list[dict]:
             product["base_ingredient"] = cleaned.lower()
 
     return products
+
+
+def get_bioland_data_age() -> timedelta | None:
+    """Get the age of the Bioland product data.
+
+    Returns:
+        timedelta since last scrape, or None if no data exists
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT MAX(scraped_at) as last_scraped
+            FROM available_products
+            WHERE source = ?
+            """,
+            (SOURCE_NAME,),
+        ).fetchone()
+
+        if row and row["last_scraped"]:
+            last_scraped = datetime.fromisoformat(row["last_scraped"])
+            return datetime.now() - last_scraped
+
+    return None
+
+
+def is_bioland_data_outdated(max_age_days: int = BIOLAND_UPDATE_INTERVAL_DAYS) -> bool:
+    """Check if the Bioland product data needs updating.
+
+    Args:
+        max_age_days: Maximum age in days before data is considered outdated
+
+    Returns:
+        True if data is outdated or doesn't exist, False otherwise
+    """
+    age = get_bioland_data_age()
+
+    if age is None:
+        return True
+
+    return age > timedelta(days=max_age_days)
+
+
+def ensure_bioland_current(
+    force: bool = False,
+    max_age_days: int = BIOLAND_UPDATE_INTERVAL_DAYS,
+) -> tuple[int, bool]:
+    """Ensure Bioland product data is current, refreshing if needed.
+
+    This is the main entry point for agents that need Bioland availability.
+    It checks if the data exists and is recent enough, refreshing if necessary.
+
+    Args:
+        force: Force refresh even if data is current
+        max_age_days: Maximum age in days before triggering update
+
+    Returns:
+        Tuple of (product_count, was_updated)
+        - product_count: Number of products in database
+        - was_updated: True if data was refreshed
+    """
+    if force:
+        print("Forcing Bioland data refresh...")
+        result = refresh_available_products(normalize=True)
+        return result["products_saved"], True
+
+    if is_bioland_data_outdated(max_age_days):
+        age = get_bioland_data_age()
+        if age is None:
+            print("No Bioland data found. Scraping...")
+        else:
+            print(f"Bioland data is {age.days} days old. Refreshing...")
+
+        result = refresh_available_products(normalize=True)
+        return result["products_saved"], True
+
+    # Data is current - just count existing products
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as count FROM available_products WHERE source = ?",
+            (SOURCE_NAME,),
+        ).fetchone()
+        count = row["count"] if row else 0
+
+    return count, False
 
 
 if __name__ == "__main__":
