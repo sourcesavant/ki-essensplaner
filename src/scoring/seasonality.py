@@ -18,7 +18,6 @@ Example usage:
 
 import json
 from datetime import date
-from pathlib import Path
 
 from src.core.config import DATA_DIR
 
