@@ -62,6 +62,7 @@ class ScoringContext:
         month: Month for seasonality check (1-12), defaults to current month
         recipe_ratings: Dict mapping recipe_id to rating (1-5)
         blacklisted_ids: Set of recipe IDs that are blacklisted (rating = 1)
+        excluded_ingredients: Set of ingredient names the user wants to avoid
     """
 
     weekday: str
@@ -71,6 +72,7 @@ class ScoringContext:
     month: int | None = None
     recipe_ratings: dict[int, int] = field(default_factory=dict)
     blacklisted_ids: set[int] = field(default_factory=set)
+    excluded_ingredients: set[str] = field(default_factory=set)
 
     def __post_init__(self):
         if self.month is None:
@@ -99,6 +101,9 @@ class ScoreBreakdown:
     # User rating info
     rating_multiplier: float = 1.0
     user_rating: int | None = None
+
+    # Excluded ingredient replacements
+    ingredient_replacements: dict[str, list[str]] = field(default_factory=dict)
 
 
 def load_profile(profile_path: Path | None = None) -> dict:
@@ -451,8 +456,9 @@ def is_recipe_viable(
 
     A recipe is viable if:
     1. Recipe is not blacklisted by user (1 star rating), AND
-    2. All key ingredients (those in the title) can be obtained, AND
-    3. At least `min_obtainable_ratio` of all ingredients can be obtained
+    2. No excluded ingredients that cannot be replaced, AND
+    3. All key ingredients (those in the title) can be obtained, AND
+    4. At least `min_obtainable_ratio` of all ingredients can be obtained
 
     Args:
         recipe: Recipe to check
@@ -468,6 +474,19 @@ def is_recipe_viable(
 
     # Extract base ingredients
     recipe_ingredients = _get_recipe_base_ingredients(recipe, context.profile)
+
+    # Check excluded ingredients
+    if context.excluded_ingredients and recipe_ingredients:
+        from src.profile.ingredient_replacer import check_excluded_ingredients_in_recipe
+
+        is_viable_excluded, blocking, _ = check_excluded_ingredients_in_recipe(
+            recipe_name=recipe.title,
+            recipe_ingredients=recipe_ingredients,
+            excluded_ingredients=context.excluded_ingredients,
+        )
+        if not is_viable_excluded:
+            reasons = [f"Enthält {ing} (ausgeschlossen, nicht ersetzbar)" for ing in blocking]
+            return (False, reasons, 0.0)
 
     if not recipe_ingredients:
         return True, [], 1.0  # No ingredients = viable
@@ -517,6 +536,12 @@ def generate_reasoning(score: ScoreBreakdown) -> str:
             reasons.append(f"Favorit ({score.user_rating} Sterne)")
         elif score.user_rating == 2:
             reasons.append("Weniger bevorzugt (2 Sterne)")
+
+    # Ingredient replacements
+    if score.ingredient_replacements:
+        for excluded, alternatives in score.ingredient_replacements.items():
+            if alternatives:
+                reasons.append(f"{excluded} ersetzbar durch {', '.join(alternatives[:2])}")
 
     # Ingredient affinity
     if score.ingredient_affinity >= 80:
@@ -604,6 +629,18 @@ def calculate_score(
             rating_multiplier = RATING_MULTIPLIERS[user_rating]
             total_score *= rating_multiplier
 
+    # Check for excluded ingredient replacements
+    ingredient_replacements = {}
+    if context.excluded_ingredients and recipe_ingredients:
+        from src.profile.ingredient_replacer import check_excluded_ingredients_in_recipe
+
+        _, _, replacements = check_excluded_ingredients_in_recipe(
+            recipe_name=recipe.title,
+            recipe_ingredients=recipe_ingredients,
+            excluded_ingredients=context.excluded_ingredients,
+        )
+        ingredient_replacements = replacements
+
     # Create score breakdown
     score = ScoreBreakdown(
         total_score=round(total_score, 1),
@@ -616,6 +653,7 @@ def calculate_score(
         out_of_season=out_of_season,
         rating_multiplier=rating_multiplier,
         user_rating=user_rating,
+        ingredient_replacements=ingredient_replacements,
     )
 
     # Generate reasoning

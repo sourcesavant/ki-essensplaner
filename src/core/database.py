@@ -87,6 +87,15 @@ CREATE TABLE IF NOT EXISTS recipe_ratings (
 
 CREATE INDEX IF NOT EXISTS idx_recipe_ratings_recipe ON recipe_ratings(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_ratings_rating ON recipe_ratings(rating);
+
+-- Excluded ingredients (user doesn't want to eat these)
+CREATE TABLE IF NOT EXISTS excluded_ingredients (
+    id INTEGER PRIMARY KEY,
+    ingredient_name TEXT NOT NULL UNIQUE,
+    excluded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_excluded_ingredients_name ON excluded_ingredients(ingredient_name);
 """
 
 
@@ -629,3 +638,69 @@ def delete_recipe_rating(recipe_id: int) -> bool:
             "DELETE FROM recipe_ratings WHERE recipe_id = ?", (recipe_id,)
         )
         return cursor.rowcount > 0
+
+
+# Excluded Ingredients CRUD operations
+
+
+def exclude_ingredient(ingredient_name: str) -> None:
+    """Fügt eine Zutat zur Ausschluss-Liste hinzu.
+
+    Args:
+        ingredient_name: Normalized ingredient name to exclude
+    """
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO excluded_ingredients (ingredient_name, excluded_at)
+            VALUES (?, ?)
+            """,
+            (ingredient_name.lower(), datetime.now().isoformat()),
+        )
+
+
+def remove_excluded_ingredient(ingredient_name: str) -> bool:
+    """Entfernt eine Zutat von der Ausschluss-Liste.
+
+    Args:
+        ingredient_name: Ingredient name to remove from exclusions
+
+    Returns:
+        True if removed, False if not found
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM excluded_ingredients WHERE ingredient_name = ?",
+            (ingredient_name.lower(),),
+        )
+        return cursor.rowcount > 0
+
+
+def get_excluded_ingredients() -> set[str]:
+    """Gibt alle ausgeschlossenen Zutaten zurück.
+
+    Returns:
+        Set of excluded ingredient names (normalized, lowercase)
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT ingredient_name FROM excluded_ingredients"
+        ).fetchall()
+        return {row["ingredient_name"] for row in rows}
+
+
+def is_ingredient_excluded(ingredient_name: str) -> bool:
+    """Prüft ob eine Zutat ausgeschlossen ist.
+
+    Args:
+        ingredient_name: Ingredient name to check
+
+    Returns:
+        True if excluded, False otherwise
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM excluded_ingredients WHERE ingredient_name = ?",
+            (ingredient_name.lower(),),
+        ).fetchone()
+        return row is not None
