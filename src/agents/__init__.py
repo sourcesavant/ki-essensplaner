@@ -9,12 +9,16 @@ from src.agents.models import (
     SlotGroup,
     SlotRecommendation,
     WeeklyRecommendation,
+    load_weekly_plan,
+    save_weekly_plan,
 )
 from src.agents.recipe_search_agent import run_search_agent
 
 __all__ = [
-    # Main function
+    # Main functions
     "run_search_agent",
+    "save_weekly_plan",
+    "load_weekly_plan",
     # Models
     "ScoredRecipe",
     "SlotRecommendation",

@@ -27,6 +27,7 @@ from src.agents.models import (
     SlotGroup,
     SlotRecommendation,
     WeeklyRecommendation,
+    save_weekly_plan,
 )
 from src.core.database import (
     get_all_ratings,
@@ -553,6 +554,11 @@ def run_search_agent(
         new_count=new_count,
         slots=slot_recommendations,
     )
+
+    # Save the plan
+    print("\n11. Saving weekly plan...")
+    save_path = save_weekly_plan(result)
+    print(f"   Saved to {save_path}")
 
     print("\n" + "=" * 60)
     print("Results")
