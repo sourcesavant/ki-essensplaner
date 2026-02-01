@@ -73,7 +73,7 @@ print(result.summary())
 - Bewertungsmöglichkeit von Rezepten
 - Ausschluss von Zutaten; Modifikation von Rezepten durch Ersatz von ungewünschten Zutaten durch ähnliche Zutaten
 
-### Phase 5: Lernfunktion + Interaktion 🔜
+### Phase 6: Lernfunktion + Interaktion 🔜
 - Bereitstellung des Wochenplans, Angebot von mehreren Rezepten pro Slot
 - Bereitstellung von Einkauflisten (aggregiert)
 
