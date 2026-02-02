@@ -196,16 +196,66 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
 
 ## Home Assistant Integration
 
-Nach der Installation können Sie den begleitenden Custom Component "KI-Essensplaner" installieren, der einen Sensor für den API-Status bereitstellt.
+Nach der Installation können Sie den begleitenden Custom Component "KI-Essensplaner" installieren, der Sensoren und Services für die vollständige Kontrolle bereitstellt.
 
-### Sensor
+### Sensoren
 
-`sensor.essensplaner_api_status`:
+**`sensor.essensplaner_api_status`**:
 - **State**: `healthy`, `cached`, oder `offline`
 - **Attribute**:
   - `database_ok`: Datenbankverbindung OK
   - `profile_age_days`: Alter des Profils in Tagen
   - `bioland_age_days`: Alter der Bioland-Daten in Tagen
+  - `cached`: Daten aus Cache (bei API-Ausfall)
+
+**`sensor.essensplaner_profile_status`**:
+- **State**: `current`, `outdated`, oder `missing`
+- **Attribute**:
+  - `profile_age_days`: Alter des Profils in Tagen
+  - `needs_update`: Boolean (true wenn >7 Tage alt)
+
+**`sensor.essensplaner_top_ingredients`**:
+- **State**: Anzahl der Zutaten im Profil
+- **Attribute**:
+  - `ingredients`: Liste der Top-10-Zutaten mit Scores
+
+**`sensor.essensplaner_excluded_ingredients`**:
+- **State**: Anzahl der ausgeschlossenen Zutaten
+- **Attribute**:
+  - `ingredients`: Sortierte Liste der ausgeschlossenen Zutaten
+
+### Services
+
+**`ki_essensplaner.rate_recipe`**:
+Bewerte ein Rezept von 1-5 Sternen (1=Blacklist, 5=Favorit)
+```yaml
+service: ki_essensplaner.rate_recipe
+data:
+  recipe_id: 123
+  rating: 5
+```
+
+**`ki_essensplaner.exclude_ingredient`**:
+Schließe eine Zutat von allen zukünftigen Rezepten aus
+```yaml
+service: ki_essensplaner.exclude_ingredient
+data:
+  ingredient_name: "zwiebeln"
+```
+
+**`ki_essensplaner.remove_ingredient_exclusion`**:
+Entferne eine Zutat von der Ausschlussliste
+```yaml
+service: ki_essensplaner.remove_ingredient_exclusion
+data:
+  ingredient_name: "zwiebeln"
+```
+
+**`ki_essensplaner.refresh_profile`**:
+Aktualisiere das Vorlieben-Profil manuell
+```yaml
+service: ki_essensplaner.refresh_profile
+```
 
 ## Datenspeicherung
 

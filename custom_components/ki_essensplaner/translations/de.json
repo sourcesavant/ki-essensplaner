@@ -46,7 +46,56 @@
     "sensor": {
       "api_status": {
         "name": "API Status"
+      },
+      "profile_status": {
+        "name": "Profil Status"
+      },
+      "top_ingredients": {
+        "name": "Top Zutaten"
+      },
+      "excluded_ingredients": {
+        "name": "Ausgeschlossene Zutaten"
       }
+    }
+  },
+  "services": {
+    "rate_recipe": {
+      "name": "Rezept Bewerten",
+      "description": "Bewerte ein Rezept von 1 bis 5 Sternen. Rezepte mit 1 Stern werden automatisch auf die Blacklist gesetzt.",
+      "fields": {
+        "recipe_id": {
+          "name": "Rezept-ID",
+          "description": "Die Datenbank-ID des zu bewertenden Rezepts"
+        },
+        "rating": {
+          "name": "Bewertung",
+          "description": "Bewertung von 1 bis 5 Sternen (1=Blacklist, 5=Favorit)"
+        }
+      }
+    },
+    "exclude_ingredient": {
+      "name": "Zutat Ausschließen",
+      "description": "Schließe eine Zutat von allen zukünftigen Rezeptsuchen aus.",
+      "fields": {
+        "ingredient_name": {
+          "name": "Zutatenname",
+          "description": "Name der auszuschließenden Zutat"
+        }
+      }
+    },
+    "remove_ingredient_exclusion": {
+      "name": "Zutaten-Ausschluss Entfernen",
+      "description": "Entferne eine Zutat von der Ausschlussliste.",
+      "fields": {
+        "ingredient_name": {
+          "name": "Zutatenname",
+          "description": "Name der Zutat, die von den Ausschlüssen entfernt werden soll"
+        }
+      }
+    },
+    "refresh_profile": {
+      "name": "Profil Aktualisieren",
+      "description": "Aktualisiere das Vorlieben-Profil manuell durch Analyse der gesamten Mahlzeiten-Historie."
     }
   }
 }

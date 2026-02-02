@@ -92,3 +92,128 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.info("Using cached data due to unexpected error")
                 return cached
             raise UpdateFailed(f"Unexpected error: {err}") from err
+
+    def _get_headers(self) -> dict[str, str]:
+        """Get headers for API requests."""
+        headers = {"Content-Type": "application/json"}
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+        return headers
+
+    async def rate_recipe(self, recipe_id: int, rating: int) -> None:
+        """Rate a recipe via API.
+
+        Args:
+            recipe_id: The database ID of the recipe
+            rating: Rating from 1 to 5 stars
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/recipes/{recipe_id}/rate",
+                    headers=self._get_headers(),
+                    json={"rating": rating},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to rate recipe: %s", error_text)
+                        raise UpdateFailed(f"Failed to rate recipe: {error_text}")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error rating recipe: %s", err)
+            raise UpdateFailed(f"Error rating recipe: {err}") from err
+
+    async def exclude_ingredient(self, ingredient_name: str) -> None:
+        """Exclude an ingredient via API.
+
+        Args:
+            ingredient_name: Name of the ingredient to exclude
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/ingredients/exclude",
+                    headers=self._get_headers(),
+                    json={"ingredient_name": ingredient_name},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to exclude ingredient: %s", error_text)
+                        raise UpdateFailed(f"Failed to exclude ingredient: {error_text}")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error excluding ingredient: %s", err)
+            raise UpdateFailed(f"Error excluding ingredient: {err}") from err
+
+    async def remove_ingredient_exclusion(self, ingredient_name: str) -> None:
+        """Remove ingredient exclusion via API.
+
+        Args:
+            ingredient_name: Name of the ingredient to remove from exclusions
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.api_url}/api/ingredients/exclude/{ingredient_name}",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 204:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to remove ingredient exclusion: %s", error_text)
+                        raise UpdateFailed(f"Failed to remove ingredient exclusion: {error_text}")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error removing ingredient exclusion: %s", err)
+            raise UpdateFailed(f"Error removing ingredient exclusion: {err}") from err
+
+    async def refresh_profile(self) -> None:
+        """Refresh the preference profile via API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/profile/refresh",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to refresh profile: %s", error_text)
+                        raise UpdateFailed(f"Failed to refresh profile: {error_text}")
+            # Refresh coordinator data after profile update
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error refreshing profile: %s", err)
+            raise UpdateFailed(f"Error refreshing profile: {err}") from err
+
+    async def get_profile(self) -> dict[str, Any] | None:
+        """Get the full profile data from API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/profile",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return None
+        except Exception as err:
+            _LOGGER.error("Error fetching profile: %s", err)
+            return None
+
+    async def get_excluded_ingredients(self) -> list[str]:
+        """Get list of excluded ingredients from API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/ingredients/excluded",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("ingredients", [])
+                    return []
+        except Exception as err:
+            _LOGGER.error("Error fetching excluded ingredients: %s", err)
+            return []

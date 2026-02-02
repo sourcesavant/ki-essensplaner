@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 2.0 (Update: Issue #24 implementiert - Onboarding komplett, 02.02.2026)
+**Version:** 2.1 (Update: Issue #25 implementiert - Konfigurationsmodul komplett, 02.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -205,7 +205,41 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
   http://localhost:8099/api/onboarding/profile/generate
 ```
 
-- Issue #25: Konfigurationsmodul
+- Issue #25 ✅: Konfigurationsmodul
+  - 4 Home Assistant Services implementiert
+  - 3 neue Sensoren für Profil-Monitoring
+  - services.yaml mit vollständiger Dokumentation
+  - Vollständige DE-Übersetzungen
+
+**Services:**
+```yaml
+# Rezept bewerten
+service: ki_essensplaner.rate_recipe
+data:
+  recipe_id: 123
+  rating: 5
+
+# Zutat ausschließen
+service: ki_essensplaner.exclude_ingredient
+data:
+  ingredient_name: "zwiebeln"
+
+# Ausschluss entfernen
+service: ki_essensplaner.remove_ingredient_exclusion
+data:
+  ingredient_name: "zwiebeln"
+
+# Profil aktualisieren
+service: ki_essensplaner.refresh_profile
+```
+
+**Sensoren:**
+- `sensor.essensplaner_api_status` - API Status (bereits vorhanden)
+- `sensor.essensplaner_profile_status` - Profil-Status (current/outdated/missing)
+- `sensor.essensplaner_top_ingredients` - Top 10 Lieblingszutaten
+- `sensor.essensplaner_excluded_ingredients` - Ausgeschlossene Zutaten
+
+- Issue #26: Wochenplanmodul
   - OneNote-Zugriff konfigurieren
   - Notizbücher auswählen
   - Erste Profilerstellung

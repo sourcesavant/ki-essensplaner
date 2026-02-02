@@ -1,0 +1,51 @@
+rate_recipe:
+  name: Rate Recipe
+  description: Rate a recipe from 1 to 5 stars. Recipes rated with 1 star are automatically blacklisted.
+  fields:
+    recipe_id:
+      name: Recipe ID
+      description: The database ID of the recipe to rate
+      required: true
+      example: 123
+      selector:
+        number:
+          min: 1
+          mode: box
+    rating:
+      name: Rating
+      description: Rating from 1 to 5 stars (1=blacklist, 5=favorite)
+      required: true
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 5
+          mode: slider
+
+exclude_ingredient:
+  name: Exclude Ingredient
+  description: Exclude an ingredient from all future recipe searches. Recipes with this ingredient will be filtered out.
+  fields:
+    ingredient_name:
+      name: Ingredient Name
+      description: Name of the ingredient to exclude (e.g., "zwiebeln")
+      required: true
+      example: "zwiebeln"
+      selector:
+        text:
+
+remove_ingredient_exclusion:
+  name: Remove Ingredient Exclusion
+  description: Remove an ingredient from the exclusion list, allowing it in future recipes again.
+  fields:
+    ingredient_name:
+      name: Ingredient Name
+      description: Name of the ingredient to remove from exclusions
+      required: true
+      example: "zwiebeln"
+      selector:
+        text:
+
+refresh_profile:
+  name: Refresh Profile
+  description: Manually refresh the preference profile by analyzing all meal history. This updates ingredient preferences and cooking patterns.

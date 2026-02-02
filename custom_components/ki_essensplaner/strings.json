@@ -46,7 +46,56 @@
     "sensor": {
       "api_status": {
         "name": "API Status"
+      },
+      "profile_status": {
+        "name": "Profile Status"
+      },
+      "top_ingredients": {
+        "name": "Top Ingredients"
+      },
+      "excluded_ingredients": {
+        "name": "Excluded Ingredients"
       }
+    }
+  },
+  "services": {
+    "rate_recipe": {
+      "name": "Rate Recipe",
+      "description": "Rate a recipe from 1 to 5 stars. Recipes rated with 1 star are automatically blacklisted.",
+      "fields": {
+        "recipe_id": {
+          "name": "Recipe ID",
+          "description": "The database ID of the recipe to rate"
+        },
+        "rating": {
+          "name": "Rating",
+          "description": "Rating from 1 to 5 stars (1=blacklist, 5=favorite)"
+        }
+      }
+    },
+    "exclude_ingredient": {
+      "name": "Exclude Ingredient",
+      "description": "Exclude an ingredient from all future recipe searches.",
+      "fields": {
+        "ingredient_name": {
+          "name": "Ingredient Name",
+          "description": "Name of the ingredient to exclude"
+        }
+      }
+    },
+    "remove_ingredient_exclusion": {
+      "name": "Remove Ingredient Exclusion",
+      "description": "Remove an ingredient from the exclusion list.",
+      "fields": {
+        "ingredient_name": {
+          "name": "Ingredient Name",
+          "description": "Name of the ingredient to remove from exclusions"
+        }
+      }
+    },
+    "refresh_profile": {
+      "name": "Refresh Profile",
+      "description": "Manually refresh the preference profile by analyzing all meal history."
     }
   }
 }
