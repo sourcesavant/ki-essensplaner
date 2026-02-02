@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KI-Essensplaner Setup",
+        "description": "Configure the connection to your KI-Essensplaner API.",
+        "data": {
+          "api_url": "API URL",
+          "api_token": "API Token (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the API. Please check the URL and token."
+    },
+    "abort": {
+      "already_configured": "This integration is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "api_status": {
+        "name": "API Status"
+      }
+    }
+  }
+}

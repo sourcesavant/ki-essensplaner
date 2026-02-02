@@ -1,0 +1,27 @@
+name: "KI-Essensplaner"
+description: "KI-basierte Wochenplanung für Mahlzeiten mit Bioland-Integration"
+slug: "ki_essensplaner"
+version: "1.0.0"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: application
+boot: auto
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: "API-Port für den Essensplaner"
+options:
+  api_token: ""
+  openai_api_key: ""
+  log_level: "info"
+schema:
+  api_token: str
+  openai_api_key: str?
+  log_level: list(debug|info|warning|error)?
+map:
+  - share:rw
+  - config:ro
+url: "https://github.com/sourcesavant/ki-essensplaner"

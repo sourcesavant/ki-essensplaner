@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 1.8 (Update: Phase 7 Issues definiert, 01.02.2026)
+**Version:** 1.9 (Update: Issue #23 implementiert - API-Layer komplett, 02.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -121,7 +121,7 @@ split = shopping_list.split_by_store()
 print(split)  # Bioland + Rewe Listen
 ```
 
-### Phase 7: Integration in HA-Dashboard 🔜
+### Phase 7: Integration in HA-Dashboard 🏗️
 
 **Architektur-Entscheidungen:**
 - REST API (FastAPI) - MQTT später bei Bedarf
@@ -130,11 +130,48 @@ print(split)  # Bioland + Rewe Listen
 - Offline-Caching im Custom Component
 
 **Issues:**
-- Issue #23: API-Layer + Add-on Grundgerüst
-  - FastAPI mit uvicorn, Token-Auth
-  - Lokales Add-on in `/addons/ki_essensplaner/`
+- Issue #23 ✅: API-Layer + Add-on Grundgerüst
+  - FastAPI mit uvicorn, Token-Auth (Bearer)
+  - 11 neue Endpoints: Wochenplan (4), Einkaufsliste (2), Rezepte (5)
+  - Lokales Add-on in `/addons/ki_essensplaner/` mit DOCS.md
   - Custom Component in `custom_components/ki_essensplaner/`
-  - `sensor.essensplaner_api_status` (online/offline + Caching)
+  - `sensor.essensplaner_api_status` mit Offline-Caching
+  - Background Tasks für async Plan-Generierung (30-120 Sek.)
+  - On-Demand Shopping List Generierung
+
+**API Verwendung:**
+```bash
+# Wochenplan generieren (async)
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  http://localhost:8099/api/weekly-plan/generate
+
+# Wochenplan abrufen
+curl -H "Authorization: Bearer <TOKEN>" \
+  http://localhost:8099/api/weekly-plan
+
+# Rezept auswählen
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"weekday":"Montag","slot":"Abendessen","recipe_index":1}' \
+  http://localhost:8099/api/weekly-plan/select
+
+# Einkaufsliste (nach Store aufgeteilt)
+curl -H "Authorization: Bearer <TOKEN>" \
+  http://localhost:8099/api/shopping-list/split
+
+# Rezept bewerten
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"rating":5}' \
+  http://localhost:8099/api/recipes/123/rate
+
+# Zutat ausschließen
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"ingredient_name":"zwiebeln"}' \
+  http://localhost:8099/api/ingredients/exclude
+```
+
 - Issue #24: Onboarding
   - OneNote-Zugriff konfigurieren
   - Notizbücher auswählen

@@ -1,0 +1,51 @@
+"""FastAPI application setup."""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.api.config import config
+from src.api.routers.bioland import router as bioland_router
+from src.api.routers.health import router as health_router
+from src.api.routers.profile import router as profile_router
+from src.api.routers.recipes import router as recipes_router
+from src.api.routers.seasonality import router as seasonality_router
+from src.api.routers.shopping import router as shopping_router
+from src.api.routers.weekly_plan import router as weekly_plan_router
+
+# Create FastAPI app
+app = FastAPI(
+    title="KI-Essensplaner API",
+    description="REST API für den KI-Essensplaner - personalisierte Wochenpläne",
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
+
+# Configure CORS
+if config.cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Allow all origins in development
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# Include routers
+app.include_router(health_router)
+app.include_router(profile_router)
+app.include_router(bioland_router)
+app.include_router(seasonality_router)
+app.include_router(weekly_plan_router)
+app.include_router(shopping_router)
+app.include_router(recipes_router)

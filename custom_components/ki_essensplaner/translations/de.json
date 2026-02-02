@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KI-Essensplaner Einrichtung",
+        "description": "Konfigurieren Sie die Verbindung zu Ihrer KI-Essensplaner API.",
+        "data": {
+          "api_url": "API URL",
+          "api_token": "API Token (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zur API nicht möglich. Bitte überprüfen Sie URL und Token."
+    },
+    "abort": {
+      "already_configured": "Diese Integration ist bereits konfiguriert."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "api_status": {
+        "name": "API Status"
+      }
+    }
+  }
+}
