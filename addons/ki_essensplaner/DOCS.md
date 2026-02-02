@@ -257,6 +257,70 @@ Aktualisiere das Vorlieben-Profil manuell
 service: ki_essensplaner.refresh_profile
 ```
 
+**`ki_essensplaner.generate_weekly_plan`**:
+Generiere einen neuen Wochenplan (async, 30-120 Sekunden)
+```yaml
+service: ki_essensplaner.generate_weekly_plan
+```
+
+**`ki_essensplaner.select_recipe`**:
+Wähle ein alternatives Rezept für einen Mahlzeiten-Slot
+```yaml
+service: ki_essensplaner.select_recipe
+data:
+  weekday: "Montag"
+  slot: "Abendessen"
+  recipe_index: 2  # Alternative auswählen (0-4)
+```
+
+**`ki_essensplaner.delete_weekly_plan`**:
+Lösche den aktuellen Wochenplan
+```yaml
+service: ki_essensplaner.delete_weekly_plan
+```
+
+### Wochenplan-Sensoren
+
+**`sensor.essensplaner_weekly_plan_status`**:
+- **State**: `active` oder `no_plan`
+- **Attribute**:
+  - `week_start`: Start-Datum der Woche
+  - `generated_at`: Generierungs-Zeitpunkt
+  - `favorites_count`: Anzahl Favoriten
+  - `new_count`: Anzahl neue Rezepte
+  - `total_slots`: Anzahl Slots (14)
+
+**14 Slot-Sensoren** (`sensor.essensplaner_{wochentag}_{mahlzeit}`):
+- `sensor.essensplaner_montag_mittagessen`
+- `sensor.essensplaner_montag_abendessen`
+- ... (und so weiter für alle 7 Tage)
+
+Jeder Slot-Sensor:
+- **State**: Rezept-Titel oder "Kein Plan"
+- **Attribute**:
+  - `recipe_id`: Datenbank-ID
+  - `recipe_url`: Link zum Rezept
+  - `prep_time_minutes`: Zubereitungszeit
+  - `calories`: Kalorien
+  - `score`: Scoring-Punkte
+  - `is_new`: Neu oder Favorit
+  - `alternatives`: Anzahl Alternativen (0-4)
+  - `selected_index`: Gewählter Index
+  - `ingredients`: Liste der Zutaten
+
+**`sensor.essensplaner_next_meal`**:
+- **State**: Titel der nächsten anstehenden Mahlzeit
+- **Attribute**:
+  - `next_weekday`: Wochentag der nächsten Mahlzeit
+  - `next_slot`: Slot der nächsten Mahlzeit
+  - `recipe_id`, `recipe_url`, `prep_time_minutes`, `calories`
+  - `ingredients`: Liste der Zutaten
+
+Logik für "nächste Mahlzeit":
+- Vor 12:00 Uhr → Heutiges Mittagessen
+- 12:00-18:00 Uhr → Heutiges Abendessen
+- Nach 18:00 Uhr → Morgiges Mittagessen
+
 ## Datenspeicherung
 
 Alle Daten werden unter `/share/ki_essensplaner/` gespeichert und bleiben bei Add-on Updates erhalten.

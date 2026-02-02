@@ -217,3 +217,91 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.error("Error fetching excluded ingredients: %s", err)
             return []
+
+    async def generate_weekly_plan(self) -> None:
+        """Generate new weekly plan via API (async background task).
+
+        This operation takes 30-120 seconds and runs in the background.
+        The API returns 202 Accepted immediately.
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/weekly-plan/generate",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 202:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to generate weekly plan: %s", error_text)
+                        raise UpdateFailed(f"Failed to generate weekly plan: {error_text}")
+                    _LOGGER.info("Weekly plan generation started (background task)")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error generating weekly plan: %s", err)
+            raise UpdateFailed(f"Error generating weekly plan: {err}") from err
+
+    async def get_weekly_plan(self) -> dict[str, Any] | None:
+        """Get the current weekly plan from API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/weekly-plan",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 404:
+                        return None
+                    else:
+                        error_text = await response.text()
+                        _LOGGER.warning("Failed to get weekly plan: %s", error_text)
+                        return None
+        except Exception as err:
+            _LOGGER.error("Error fetching weekly plan: %s", err)
+            return None
+
+    async def select_recipe(self, weekday: str, slot: str, recipe_index: int) -> None:
+        """Select a recipe for a specific meal slot.
+
+        Args:
+            weekday: German weekday name (Montag, Dienstag, ...)
+            slot: Meal slot (Mittagessen, Abendessen)
+            recipe_index: Recipe index (0-4)
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/weekly-plan/select",
+                    headers=self._get_headers(),
+                    json={
+                        "weekday": weekday,
+                        "slot": slot,
+                        "recipe_index": recipe_index,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to select recipe: %s", error_text)
+                        raise UpdateFailed(f"Failed to select recipe: {error_text}")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error selecting recipe: %s", err)
+            raise UpdateFailed(f"Error selecting recipe: {err}") from err
+
+    async def delete_weekly_plan(self) -> None:
+        """Delete the current weekly plan via API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.api_url}/api/weekly-plan",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 204:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to delete weekly plan: %s", error_text)
+                        raise UpdateFailed(f"Failed to delete weekly plan: {error_text}")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error deleting weekly plan: %s", err)
+            raise UpdateFailed(f"Error deleting weekly plan: {err}") from err

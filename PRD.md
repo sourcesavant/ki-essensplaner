@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 2.1 (Update: Issue #25 implementiert - Konfigurationsmodul komplett, 02.02.2026)
+**Version:** 2.2 (Update: Issue #26 implementiert - Wochenplanmodul komplett, 02.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -239,7 +239,41 @@ service: ki_essensplaner.refresh_profile
 - `sensor.essensplaner_top_ingredients` - Top 10 Lieblingszutaten
 - `sensor.essensplaner_excluded_ingredients` - Ausgeschlossene Zutaten
 
-- Issue #26: Wochenplanmodul
+- Issue #26 ✅: Wochenplanmodul
+  - 3 Home Assistant Services für Wochenplan
+  - 16 neue Sensoren (1 Status + 14 Slots + 1 Nächste Mahlzeit)
+  - Vollständige Wochenplan-Verwaltung über HA
+  - Vollständige DE-Übersetzungen
+
+**Services:**
+```yaml
+# Wochenplan generieren (async, 30-120 Sek.)
+service: ki_essensplaner.generate_weekly_plan
+
+# Rezept auswählen
+service: ki_essensplaner.select_recipe
+data:
+  weekday: "Montag"
+  slot: "Abendessen"
+  recipe_index: 2
+
+# Wochenplan löschen
+service: ki_essensplaner.delete_weekly_plan
+```
+
+**Sensoren:**
+- `sensor.essensplaner_weekly_plan_status` - Plan-Status (active/no_plan)
+- `sensor.essensplaner_montag_mittagessen` - Montag Mittagessen
+- `sensor.essensplaner_montag_abendessen` - Montag Abendessen
+- ... (14 Slot-Sensoren total)
+- `sensor.essensplaner_next_meal` - Nächste anstehende Mahlzeit
+
+**Sensor-Attributes:**
+- `recipe_id`, `recipe_url`, `prep_time_minutes`, `calories`
+- `score`, `is_new`, `alternatives`, `selected_index`
+- `ingredients` (Liste)
+
+- Issue #27: Einkaufslistenmodul
   - OneNote-Zugriff konfigurieren
   - Notizbücher auswählen
   - Erste Profilerstellung

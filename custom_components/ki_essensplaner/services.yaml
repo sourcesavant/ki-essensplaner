@@ -49,3 +49,51 @@ remove_ingredient_exclusion:
 refresh_profile:
   name: Refresh Profile
   description: Manually refresh the preference profile by analyzing all meal history. This updates ingredient preferences and cooking patterns.
+
+generate_weekly_plan:
+  name: Generate Weekly Plan
+  description: Generate a new weekly meal plan with recipe recommendations. This operation takes 30-120 seconds and runs in the background.
+
+select_recipe:
+  name: Select Recipe
+  description: Select an alternative recipe for a specific meal slot from the available recommendations.
+  fields:
+    weekday:
+      name: Weekday
+      description: German weekday name (Montag, Dienstag, Mittwoch, Donnerstag, Freitag, Samstag, Sonntag)
+      required: true
+      example: "Montag"
+      selector:
+        select:
+          options:
+            - "Montag"
+            - "Dienstag"
+            - "Mittwoch"
+            - "Donnerstag"
+            - "Freitag"
+            - "Samstag"
+            - "Sonntag"
+    slot:
+      name: Meal Slot
+      description: Meal slot (Mittagessen or Abendessen)
+      required: true
+      example: "Abendessen"
+      selector:
+        select:
+          options:
+            - "Mittagessen"
+            - "Abendessen"
+    recipe_index:
+      name: Recipe Index
+      description: Index of the alternative recipe (0-4, where 0 is the top recommendation)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 4
+          mode: slider
+
+delete_weekly_plan:
+  name: Delete Weekly Plan
+  description: Delete the current weekly plan. This removes all meal recommendations.

@@ -55,6 +55,12 @@
       },
       "excluded_ingredients": {
         "name": "Ausgeschlossene Zutaten"
+      },
+      "weekly_plan_status": {
+        "name": "Wochenplan Status"
+      },
+      "next_meal": {
+        "name": "Nächste Mahlzeit"
       }
     }
   },
@@ -96,6 +102,32 @@
     "refresh_profile": {
       "name": "Profil Aktualisieren",
       "description": "Aktualisiere das Vorlieben-Profil manuell durch Analyse der gesamten Mahlzeiten-Historie."
+    },
+    "generate_weekly_plan": {
+      "name": "Wochenplan Generieren",
+      "description": "Generiere einen neuen Wochenplan mit Rezept-Empfehlungen."
+    },
+    "select_recipe": {
+      "name": "Rezept Auswählen",
+      "description": "Wähle ein alternatives Rezept für einen Mahlzeiten-Slot.",
+      "fields": {
+        "weekday": {
+          "name": "Wochentag",
+          "description": "Deutscher Wochentagsname"
+        },
+        "slot": {
+          "name": "Mahlzeit",
+          "description": "Mahlzeiten-Slot (Mittagessen oder Abendessen)"
+        },
+        "recipe_index": {
+          "name": "Rezept-Index",
+          "description": "Index des alternativen Rezepts (0-4)"
+        }
+      }
+    },
+    "delete_weekly_plan": {
+      "name": "Wochenplan Löschen",
+      "description": "Lösche den aktuellen Wochenplan."
     }
   }
 }
