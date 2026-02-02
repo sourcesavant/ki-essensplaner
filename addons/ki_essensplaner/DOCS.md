@@ -28,6 +28,25 @@ Tragen Sie diesen Token in der Add-on Konfiguration ein.
 
 Falls Sie die GPT-basierte Zutaten-Normalisierung nutzen möchten, tragen Sie Ihren OpenAI API Key ein.
 
+### Azure App Registration (für OneNote Import)
+
+Für den OneNote-Import benötigen Sie eine Azure App Registration:
+
+1. Gehen Sie zu https://portal.azure.com
+2. Navigieren Sie zu "Azure Active Directory" > "App registrations"
+3. Klicken Sie auf "New registration"
+4. Name: "KI-Essensplaner"
+5. Supported account types: "Personal Microsoft accounts only"
+6. Redirect URI: (leer lassen)
+7. Klicken Sie auf "Register"
+
+Nach der Registrierung:
+- Kopieren Sie die "Application (client) ID" → `AZURE_CLIENT_ID`
+- Unter "Authentication" > "Advanced settings": "Allow public client flows" = Yes
+- Tragen Sie die Client ID in der Add-on Konfiguration oder `.env` ein
+
+**Wichtig:** Der Tenant ID ist normalerweise "consumers" für persönliche Microsoft-Konten.
+
 ## API Endpoints
 
 ### Basis
@@ -39,6 +58,16 @@ Falls Sie die GPT-basierte Zutaten-Normalisierung nutzen möchten, tragen Sie Ih
 | `/api/profile/refresh` | POST | Ja | Profil neu generieren |
 | `/api/bioland/products` | GET | Ja | Verfügbare Bioland-Produkte |
 | `/api/seasonality/{month}` | GET | Ja | Saisonale Zutaten für Monat (1-12) |
+
+### Onboarding
+
+| Endpoint | Methode | Auth | Beschreibung |
+|----------|---------|------|--------------|
+| `/api/onboarding/status` | GET | Ja | Gesamtstatus des Onboardings |
+| `/api/onboarding/onenote/auth/status` | GET | Ja | OneNote Authentifizierungsstatus |
+| `/api/onboarding/onenote/notebooks` | GET | Ja | Verfügbare OneNote Notizbücher |
+| `/api/onboarding/import` | POST | Ja | Daten aus Notizbüchern importieren |
+| `/api/onboarding/profile/generate` | POST | Ja | Initiales Profil generieren |
 
 ### Wochenplan
 
@@ -137,6 +166,32 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
 ```bash
 curl -H "Authorization: Bearer <TOKEN>" \
   http://homeassistant.local:8099/api/ingredients/excluded
+```
+
+### Onboarding Status prüfen
+```bash
+curl -H "Authorization: Bearer <TOKEN>" \
+  http://homeassistant.local:8099/api/onboarding/status
+```
+
+### OneNote Notizbücher auflisten
+```bash
+curl -H "Authorization: Bearer <TOKEN>" \
+  http://homeassistant.local:8099/api/onboarding/onenote/notebooks
+```
+
+### Daten aus Notizbüchern importieren
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"notebook_ids": ["<NOTEBOOK_ID>"]}' \
+  http://homeassistant.local:8099/api/onboarding/import
+```
+
+### Profil generieren
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  http://homeassistant.local:8099/api/onboarding/profile/generate
 ```
 
 ## Home Assistant Integration

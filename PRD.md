@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 1.9 (Update: Issue #23 implementiert - API-Layer komplett, 02.02.2026)
+**Version:** 2.0 (Update: Issue #24 implementiert - Onboarding komplett, 02.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -172,7 +172,40 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
   http://localhost:8099/api/ingredients/exclude
 ```
 
-- Issue #24: Onboarding
+- Issue #24 ✅: Onboarding
+  - 5 API Endpoints für Setup-Flow
+  - Multi-Step Config Flow in Home Assistant
+  - Onboarding Status-Check (Azure, OneNote, Import, Profil)
+  - OneNote Authentifizierungsstatus
+  - Notizbuch-Auswahl und Import
+  - Initiale Profil-Generierung
+  - Azure App Registration Dokumentation
+
+**Onboarding Flow:**
+```bash
+# 1. Status prüfen
+curl -H "Authorization: Bearer <TOKEN>" \
+  http://localhost:8099/api/onboarding/status
+
+# 2. OneNote Auth (via CLI)
+python -m src.importers.onenote auth
+
+# 3. Notizbücher auflisten
+curl -H "Authorization: Bearer <TOKEN>" \
+  http://localhost:8099/api/onboarding/onenote/notebooks
+
+# 4. Daten importieren
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"notebook_ids": ["<ID>"]}' \
+  http://localhost:8099/api/onboarding/import
+
+# 5. Profil generieren
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  http://localhost:8099/api/onboarding/profile/generate
+```
+
+- Issue #25: Konfigurationsmodul
   - OneNote-Zugriff konfigurieren
   - Notizbücher auswählen
   - Erste Profilerstellung

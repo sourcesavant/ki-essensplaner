@@ -8,13 +8,38 @@
           "api_url": "API URL",
           "api_token": "API Token (optional)"
         }
+      },
+      "onboarding_check": {
+        "title": "Onboarding Status",
+        "description": "Your setup status:\n\nAzure Configured: {azure_configured}\nOneNote Authenticated: {onenote_auth}\nData Imported: {data_imported}\nProfile Generated: {profile_generated}\n\nNext step: {next_step}\n\nYou can skip onboarding and configure later, or continue now.",
+        "data": {
+          "skip_onboarding": "Skip onboarding for now"
+        }
+      },
+      "onenote_auth": {
+        "title": "OneNote Authentication",
+        "description": "To import your meal plans from OneNote, you need to authenticate.\n\n1. Open a terminal on your Home Assistant server\n2. Run: `python -m src.importers.onenote auth`\n3. Follow the device code authentication flow\n4. Return here and click Submit when done\n\nAlternatively, you can skip this step and authenticate later."
+      },
+      "notebook_selection": {
+        "title": "Select Notebooks",
+        "description": "Select which OneNote notebooks contain your meal plans.\n\nYou can select multiple notebooks. Leave empty to skip import.",
+        "data": {
+          "notebooks": "Notebooks to import"
+        }
+      },
+      "profile_generation": {
+        "title": "Generate Profile",
+        "description": "The final step will analyze your imported meals and generate a preference profile.\n\nThis helps the AI learn your cooking preferences, favorite ingredients, and meal patterns.\n\nClick Submit to generate your profile."
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect to the API. Please check the URL and token."
+      "cannot_connect": "Cannot connect to the API. Please check the URL and token.",
+      "import_failed": "Failed to import data from OneNote."
     },
     "abort": {
-      "already_configured": "This integration is already configured."
+      "already_configured": "This integration is already configured.",
+      "no_notebooks": "No notebooks available. Please authenticate with OneNote first.",
+      "import_failed": "Failed to import data from selected notebooks."
     }
   },
   "entity": {

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.config import config
 from src.api.routers.bioland import router as bioland_router
 from src.api.routers.health import router as health_router
+from src.api.routers.onboarding import router as onboarding_router
 from src.api.routers.profile import router as profile_router
 from src.api.routers.recipes import router as recipes_router
 from src.api.routers.seasonality import router as seasonality_router
@@ -49,3 +50,4 @@ app.include_router(seasonality_router)
 app.include_router(weekly_plan_router)
 app.include_router(shopping_router)
 app.include_router(recipes_router)
+app.include_router(onboarding_router)
