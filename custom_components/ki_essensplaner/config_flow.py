@@ -282,6 +282,10 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Start OneNote authentication and show device code."""
+        # If user submitted the form, proceed to wait for auth completion
+        if user_input is not None:
+            return await self.async_step_onenote_auth_wait()
+
         # Start the device flow to get the code
         flow_data = await self._start_device_flow()
 
