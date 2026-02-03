@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 2.6 (Update: Issue #28 implementiert - Automatisierungen & Events für HomeAssistant, 03.02.2026)
+**Version:** 3.0 (Update: Issue #29 implementiert - Lovelace Cards für Dashboard, 03.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -304,9 +304,23 @@ service: ki_essensplaner.delete_weekly_plan
     * next_meal_reminder.yaml - Erinnerung für nächste Mahlzeit
     * profile_outdated_notification.yaml - Benachrichtigung bei veraltetem Profil
   - Blueprints in custom_components/ki_essensplaner/blueprints/automation/
-- Issue #29: Lovelace Cards
-  - Wochenplan-Card (7×2 Grid, Rezeptauswahl)
-  - Einkaufslisten-Card (Tabs Bioland/Rewe, Checkboxen)
+- Issue #29 ✅: Lovelace Cards
+  - 2 Custom JavaScript Cards in www/ki-essensplaner/
+  - weekly-plan-card.js: 7x2 Grid (7 Tage x 2 Slots)
+    * Farbcodierung nach Aufwand (grün <=30min, orange <=60min, rot >60min)
+    * Dropdown mit 5 Alternativen pro Slot
+    * Link zum Originalrezept
+    * "Neu generieren" Button
+    * Badges für neue Rezepte und Reste (Multi-Day)
+    * Responsive Design (Mobile-optimiert)
+  - shopping-list-card.js: Einkaufsliste mit Tabs
+    * Bioland / Rewe Tabs mit Item-Counts
+    * Checkboxen zum Abhaken
+    * "Markierungen löschen" Button
+    * Fortschrittsanzeige (X von Y abgehakt)
+  - Theme-aware (Light/Dark Mode automatisch)
+  - Installation: www/ -> /config/www/, dann als Lovelace Resource
+  - Vollständige README.md mit Beispielen
 
 ### Phase 8: Personalisierung 🏗️
 
