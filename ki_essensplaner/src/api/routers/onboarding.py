@@ -214,12 +214,19 @@ def start_onenote_auth(_token: str = Depends(verify_token)) -> DeviceCodeRespons
     try:
         client = OneNoteClient()
 
-        # Check if already authenticated
+        # Check if already authenticated AND token is valid
         if client.try_authenticate_from_cache():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Already authenticated with OneNote. No need to re-authenticate.",
-            )
+            # Verify the token works by trying to get notebooks
+            try:
+                client.get_notebooks()
+                # Token works, already authenticated
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Already authenticated with OneNote. No need to re-authenticate.",
+                )
+            except Exception:
+                # Token doesn't work, continue with new auth
+                pass
 
         # Start device flow
         flow_data = client.start_device_flow()

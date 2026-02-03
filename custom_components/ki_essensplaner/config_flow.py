@@ -351,9 +351,8 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
         self._notebooks = notebooks
 
         if not notebooks:
-            # No notebooks available - probably not authenticated or token expired
-            # Go back to authentication step
-            return await self.async_step_onenote_auth()
+            # No notebooks available - abort with clear error
+            return self.async_abort(reason="no_notebooks")
 
         # Create multi-select options
         notebook_options = {nb["id"]: nb["name"] for nb in notebooks}
