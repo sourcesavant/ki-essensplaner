@@ -1,0 +1,96 @@
+blueprint:
+  name: Einkaufsliste beim Verlassen des Hauses senden
+  description: Sendet die aktuelle Einkaufsliste an dein Handy, wenn du das Haus verlässt.
+  domain: automation
+  input:
+    person_entity:
+      name: Person
+      description: Welche Person soll die Benachrichtigung erhalten?
+      selector:
+        entity:
+          domain: person
+    home_zone:
+      name: Zuhause-Zone
+      description: Zone, die als "Zuhause" gilt
+      default: zone.home
+      selector:
+        entity:
+          domain: zone
+    notify_device:
+      name: Benachrichtigungsgerät
+      description: Gerät für die Benachrichtigung
+      selector:
+        device:
+          integration: mobile_app
+    send_bioland:
+      name: Bioland-Liste senden
+      description: Soll die Bioland-Liste separat gesendet werden?
+      default: true
+      selector:
+        boolean:
+    send_rewe:
+      name: Rewe-Liste senden
+      description: Soll die Rewe-Liste separat gesendet werden?
+      default: true
+      selector:
+        boolean:
+
+trigger:
+  - platform: zone
+    entity_id: !input person_entity
+    zone: !input home_zone
+    event: leave
+
+condition:
+  - condition: numeric_state
+    entity_id: sensor.essensplaner_einkaufsliste_anzahl
+    above: 0
+
+action:
+  - choose:
+      - conditions: "{{ send_bioland }}"
+        sequence:
+          - service: notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}
+            data:
+              title: "Bioland Einkaufsliste"
+              message: >
+                {% set items = state_attr('sensor.essensplaner_bioland_anzahl', 'items') %}
+                {% if items %}
+                  {{ items | length }} Artikel:
+                  {% for item in items[:10] %}
+                  - {{ item.amount if item.amount else '' }} {{ item.unit if item.unit else '' }} {{ item.ingredient }}
+                  {% endfor %}
+                  {% if items | length > 10 %}
+                  ... und {{ items | length - 10 }} weitere
+                  {% endif %}
+                {% else %}
+                  Keine Bioland-Artikel
+                {% endif %}
+              data:
+                tag: bioland_shopping
+                group: shopping_lists
+
+  - choose:
+      - conditions: "{{ send_rewe }}"
+        sequence:
+          - service: notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}
+            data:
+              title: "Rewe Einkaufsliste"
+              message: >
+                {% set items = state_attr('sensor.essensplaner_rewe_anzahl', 'items') %}
+                {% if items %}
+                  {{ items | length }} Artikel:
+                  {% for item in items[:10] %}
+                  - {{ item.amount if item.amount else '' }} {{ item.unit if item.unit else '' }} {{ item.ingredient }}
+                  {% endfor %}
+                  {% if items | length > 10 %}
+                  ... und {{ items | length - 10 }} weitere
+                  {% endif %}
+                {% else %}
+                  Keine Rewe-Artikel
+                {% endif %}
+              data:
+                tag: rewe_shopping
+                group: shopping_lists
+
+mode: single

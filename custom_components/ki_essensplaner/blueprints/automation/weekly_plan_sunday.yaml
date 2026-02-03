@@ -1,0 +1,57 @@
+blueprint:
+  name: Wochenplan am Sonntag generieren
+  description: Generiert automatisch jeden Sonntag einen neuen Wochenplan für die kommende Woche.
+  domain: automation
+  input:
+    time_trigger:
+      name: Uhrzeit
+      description: Wann soll der Wochenplan generiert werden?
+      default: "18:00:00"
+      selector:
+        time:
+    notify_device:
+      name: Benachrichtigungsgerät (optional)
+      description: Gerät für Benachrichtigung nach Generierung
+      default: []
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
+
+trigger:
+  - platform: time
+    at: !input time_trigger
+    id: sunday_trigger
+
+condition:
+  - condition: time
+    weekday:
+      - sun
+
+action:
+  - service: ki_essensplaner.generate_weekly_plan
+    data: {}
+
+  - wait_for_trigger:
+      - platform: event
+        event_type: ki_essensplaner_plan_generated
+    timeout: "00:02:30"
+    continue_on_timeout: false
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ notify_device | length > 0 }}"
+        sequence:
+          - repeat:
+              count: "{{ notify_device | length }}"
+              sequence:
+                - service: notify.mobile_app_{{ device_attr(notify_device[repeat.index - 1], 'name') | slugify }}
+                  data:
+                    title: "Wochenplan erstellt"
+                    message: "Der Wochenplan für die kommende Woche wurde generiert."
+                    data:
+                      tag: ki_essensplaner_plan
+                      group: ki_essensplaner
+
+mode: single

@@ -1,0 +1,83 @@
+blueprint:
+  name: Profil-Veraltung Benachrichtigung
+  description: Sendet eine Benachrichtigung, wenn das Vorlieben-Profil älter als eine bestimmte Anzahl Tage ist.
+  domain: automation
+  input:
+    max_age_days:
+      name: Maximales Alter (Tage)
+      description: Nach wie vielen Tagen soll benachrichtigt werden?
+      default: 14
+      selector:
+        number:
+          min: 7
+          max: 30
+          step: 1
+          unit_of_measurement: days
+    check_time:
+      name: Prüfzeit
+      description: Tägliche Uhrzeit für die Prüfung
+      default: "09:00:00"
+      selector:
+        time:
+    notify_device:
+      name: Benachrichtigungsgerät
+      description: Gerät für die Benachrichtigung
+      selector:
+        device:
+          integration: mobile_app
+    auto_refresh:
+      name: Automatisch aktualisieren
+      description: Profil automatisch aktualisieren, wenn veraltet?
+      default: false
+      selector:
+        boolean:
+
+trigger:
+  - platform: time
+    at: !input check_time
+    id: daily_check
+
+condition:
+  - condition: template
+    value_template: >
+      {% set profile_age = state_attr('sensor.essensplaner_profile_status', 'profile_age_days') %}
+      {{ profile_age is not none and profile_age > max_age_days }}
+
+action:
+  - choose:
+      - conditions: "{{ auto_refresh }}"
+        sequence:
+          - service: ki_essensplaner.refresh_profile
+            data: {}
+
+          - service: notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}
+            data:
+              title: "Profil wurde aktualisiert"
+              message: >
+                Das Vorlieben-Profil war {{ state_attr('sensor.essensplaner_profile_status', 'profile_age_days') }} Tage alt und wurde automatisch aktualisiert.
+              data:
+                tag: profile_refresh
+                group: ki_essensplaner
+    default:
+      - service: persistent_notification.create
+        data:
+          title: "Profil veraltet"
+          message: >
+            Das Vorlieben-Profil ist {{ state_attr('sensor.essensplaner_profile_status', 'profile_age_days') }} Tage alt.
+            Empfohlen wird eine Aktualisierung nach {{ max_age_days }} Tagen.
+          notification_id: ki_essensplaner_profile_outdated
+
+      - service: notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}
+        data:
+          title: "Profil veraltet"
+          message: >
+            Das Vorlieben-Profil ist {{ state_attr('sensor.essensplaner_profile_status', 'profile_age_days') }} Tage alt.
+            Bitte aktualisieren.
+          data:
+            tag: profile_outdated
+            group: ki_essensplaner
+            actions:
+              - action: REFRESH_PROFILE
+                title: "Profil aktualisieren"
+
+mode: single

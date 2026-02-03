@@ -100,15 +100,36 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.refresh_profile()
 
+        # Fire event
+        hass.bus.async_fire(
+            f"{DOMAIN}_profile_updated",
+            {"message": "Preference profile has been refreshed"},
+        )
+
     async def handle_generate_weekly_plan(call: ServiceCall) -> None:
         """Handle generate_weekly_plan service call."""
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.generate_weekly_plan()
 
-        # Fire event to signal that shopping list is ready
+        # Fire events
+        hass.bus.async_fire(
+            f"{DOMAIN}_plan_generated",
+            {"message": "New weekly plan has been generated"},
+        )
         hass.bus.async_fire(
             f"{DOMAIN}_shopping_list_ready",
             {"message": "Weekly plan generated, shopping list is now available"},
+        )
+
+        # Send persistent notification
+        hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Wochenplan erstellt",
+                "message": "Ein neuer Wochenplan wurde generiert. Die Einkaufsliste ist jetzt verfügbar.",
+                "notification_id": f"{DOMAIN}_plan_generated",
+            },
         )
 
     async def handle_select_recipe(call: ServiceCall) -> None:
@@ -119,6 +140,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.select_recipe(weekday, slot, recipe_index)
+
+        # Fire event
+        hass.bus.async_fire(
+            f"{DOMAIN}_plan_updated",
+            {
+                "message": f"Recipe selection changed for {weekday} {slot}",
+                "weekday": weekday,
+                "slot": slot,
+                "recipe_index": recipe_index,
+            },
+        )
 
     async def handle_delete_weekly_plan(call: ServiceCall) -> None:
         """Handle delete_weekly_plan service call."""

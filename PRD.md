@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 2.5 (Update: Issue #27 implementiert - Einkaufslistenmodul für HomeAssistant, 03.02.2026)
+**Version:** 2.6 (Update: Issue #28 implementiert - Automatisierungen & Events für HomeAssistant, 03.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -294,10 +294,16 @@ service: ki_essensplaner.delete_weekly_plan
   - On-Demand Generierung via API (GET /api/shopping-list, GET /api/shopping-list/split)
   - Automatische Skalierung nach Haushaltsgröße und Multi-Day Prep
   - Todo-Listen Sync: Kann via Automationen konfiguriert werden
-- Issue #28: Automatisierungen & Events
-  - Events für HA-Automations (plan_generated, shopping_list_ready, etc.)
-  - Automation Blueprints
-  - Persistente Notifications
+- Issue #28 ✅: Automatisierungen & Events
+  - 4 Events: plan_generated, plan_updated, shopping_list_ready, profile_updated
+  - Event-Firing in Services: generate_weekly_plan, select_recipe, refresh_profile
+  - 2 Persistente Notifications: plan_generated, profile_outdated
+  - 4 Automation Blueprints:
+    * weekly_plan_sunday.yaml - Wochenplan jeden Sonntag generieren
+    * shopping_list_on_leave.yaml - Einkaufsliste beim Verlassen senden
+    * next_meal_reminder.yaml - Erinnerung für nächste Mahlzeit
+    * profile_outdated_notification.yaml - Benachrichtigung bei veraltetem Profil
+  - Blueprints in custom_components/ki_essensplaner/blueprints/automation/
 - Issue #29: Lovelace Cards
   - Wochenplan-Card (7×2 Grid, Rezeptauswahl)
   - Einkaufslisten-Card (Tabs Bioland/Rewe, Checkboxen)

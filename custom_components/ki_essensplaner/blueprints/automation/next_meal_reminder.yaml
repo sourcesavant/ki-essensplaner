@@ -1,0 +1,86 @@
+blueprint:
+  name: Erinnerung für nächste Mahlzeit
+  description: Sendet eine Erinnerung mit der nächsten geplanten Mahlzeit und deren Zutaten.
+  domain: automation
+  input:
+    hours_before:
+      name: Stunden vorher
+      description: Wie viele Stunden vor der Mahlzeit soll erinnert werden?
+      default: 2
+      selector:
+        number:
+          min: 0.5
+          max: 12
+          step: 0.5
+          unit_of_measurement: hours
+    notify_device:
+      name: Benachrichtigungsgerät
+      description: Gerät für die Benachrichtigung
+      selector:
+        device:
+          integration: mobile_app
+    only_new_recipes:
+      name: Nur neue Rezepte
+      description: Nur bei neuen Rezepten erinnern?
+      default: false
+      selector:
+        boolean:
+
+trigger:
+  - platform: time_pattern
+    hours: "/1"
+    id: hourly_check
+
+condition:
+  - condition: template
+    value_template: >
+      {% set next_meal = states('sensor.essensplaner_next_meal') %}
+      {{ next_meal != 'unknown' and next_meal != 'unavailable' }}
+
+action:
+  - variables:
+      next_meal_time: "{{ state_attr('sensor.essensplaner_next_meal', 'scheduled_time') }}"
+      hours_until: "{{ ((as_timestamp(next_meal_time) - now().timestamp()) / 3600) | round(1) }}"
+      is_new: "{{ state_attr('sensor.essensplaner_next_meal', 'is_new') }}"
+      recipe_title: "{{ state_attr('sensor.essensplaner_next_meal', 'recipe_title') }}"
+      ingredients: "{{ state_attr('sensor.essensplaner_next_meal', 'ingredients') }}"
+
+  - condition: template
+    value_template: >
+      {{ hours_until <= hours_before and hours_until > (hours_before - 1) }}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ only_new_recipes }}"
+        sequence:
+          - condition: template
+            value_template: "{{ is_new }}"
+
+  - service: notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}
+    data:
+      title: "Nächste Mahlzeit in {{ hours_until }}h"
+      message: >
+        {{ recipe_title }}
+        {% if is_new %}🆕 Neues Rezept!{% endif %}
+
+        Zutaten:
+        {% if ingredients %}
+        {% for ingredient in ingredients[:8] %}
+        - {{ ingredient }}
+        {% endfor %}
+        {% if ingredients | length > 8 %}
+        ... und {{ ingredients | length - 8 }} weitere
+        {% endif %}
+        {% else %}
+        Keine Zutaten verfügbar
+        {% endif %}
+      data:
+        tag: next_meal_reminder
+        group: ki_essensplaner
+        actions:
+          - action: VIEW_RECIPE
+            title: "Rezept anzeigen"
+
+mode: single
+max_exceeded: silent
