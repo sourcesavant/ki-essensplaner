@@ -18,7 +18,11 @@
       },
       "onenote_auth": {
         "title": "OneNote Authentifizierung",
-        "description": "Um Ihre Wochenpläne aus OneNote zu importieren, müssen Sie sich authentifizieren.\n\n1. Öffnen Sie ein Terminal auf Ihrem Home Assistant Server\n2. Führen Sie aus: `python -m src.importers.onenote auth`\n3. Folgen Sie dem Device Code Authentifizierungsablauf\n4. Kehren Sie hierher zurück und klicken Sie auf Absenden\n\nAlternativ können Sie diesen Schritt überspringen und später authentifizieren."
+        "description": "Um Ihr OneNote-Konto zu verbinden:\n\n**1.** Öffnen Sie diesen Link in einem neuen Tab:\n**{verification_uri}**\n\n**2.** Geben Sie diesen Code ein:\n# {user_code}\n\n**3.** Melden Sie sich mit Ihrem Microsoft-Konto an\n\n**4.** Klicken Sie unten auf 'Absenden'\n\nDer Import startet automatisch nach der Authentifizierung."
+      },
+      "onenote_auth_wait": {
+        "title": "Warte auf Authentifizierung",
+        "description": "Bitte schließen Sie die Authentifizierung in Ihrem Browser ab.\n\nSobald Sie sich bei Microsoft angemeldet haben, wird die Einrichtung automatisch fortgesetzt."
       },
       "notebook_selection": {
         "title": "Notizbücher Auswählen",
@@ -39,7 +43,9 @@
     "abort": {
       "already_configured": "Diese Integration ist bereits konfiguriert.",
       "no_notebooks": "Keine Notizbücher verfügbar. Bitte authentifizieren Sie sich zuerst mit OneNote.",
-      "import_failed": "Import der Daten aus den ausgewählten Notizbüchern fehlgeschlagen."
+      "import_failed": "Import der Daten aus den ausgewählten Notizbüchern fehlgeschlagen.",
+      "auth_start_failed": "OneNote-Authentifizierung konnte nicht gestartet werden. Bitte prüfen Sie, ob das Add-on läuft.",
+      "auth_failed": "OneNote-Authentifizierung fehlgeschlagen oder Zeitüberschreitung. Bitte versuchen Sie es erneut."
     }
   },
   "entity": {

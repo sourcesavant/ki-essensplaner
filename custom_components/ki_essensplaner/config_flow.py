@@ -22,6 +22,8 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
         self._api_url: str | None = None
         self._api_token: str | None = None
         self._notebooks: list[dict[str, str]] = []
+        self._device_code: str | None = None
+        self._verification_uri: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -226,18 +228,103 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
+    async def _start_device_flow(self) -> dict[str, Any] | None:
+        """Start the OneNote device code flow."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {"Content-Type": "application/json"}
+                if self._api_token:
+                    headers["Authorization"] = f"Bearer {self._api_token}"
+
+                async with session.post(
+                    f"{self._api_url.rstrip('/')}/api/onboarding/onenote/auth/start",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 400:
+                        # Already authenticated
+                        return {"already_authenticated": True}
+        except Exception:
+            pass
+        return None
+
+    async def _complete_device_flow(self) -> dict[str, Any] | None:
+        """Complete the OneNote device code flow (waits for user to authenticate)."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {"Content-Type": "application/json"}
+                if self._api_token:
+                    headers["Authorization"] = f"Bearer {self._api_token}"
+
+                async with session.post(
+                    f"{self._api_url.rstrip('/')}/api/onboarding/onenote/auth/complete",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=320),  # 5+ minutes
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+        except Exception:
+            pass
+        return None
+
     async def async_step_onenote_auth(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Show OneNote authentication instructions."""
-        if user_input is not None:
-            # User confirmed they've authenticated
-            return await self.async_step_notebook_selection()
+        """Start OneNote authentication and show device code."""
+        # Start the device flow to get the code
+        flow_data = await self._start_device_flow()
 
+        if flow_data and flow_data.get("already_authenticated"):
+            # Already authenticated, skip to next step
+            return await self.async_step_onenote_auth_wait({"skip": True})
+
+        if not flow_data or "user_code" not in flow_data:
+            return self.async_abort(reason="auth_start_failed")
+
+        # Store the code for display
+        self._device_code = flow_data["user_code"]
+        self._verification_uri = flow_data["verification_uri"]
+
+        # Show the code to the user
         return self.async_show_form(
             step_id="onenote_auth",
             data_schema=vol.Schema({}),
+            description_placeholders={
+                "user_code": self._device_code,
+                "verification_uri": self._verification_uri,
+            },
         )
+
+    async def async_step_onenote_auth_wait(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Wait for OneNote authentication to complete."""
+        if user_input and user_input.get("skip"):
+            # Already authenticated
+            return self.async_create_entry(
+                title="KI-Essensplaner",
+                data={
+                    CONF_API_URL: self._api_url,
+                    CONF_API_TOKEN: self._api_token,
+                },
+            )
+
+        # Wait for the authentication to complete
+        result = await self._complete_device_flow()
+
+        if result and result.get("authenticated"):
+            # Success! Auto-import runs in background
+            return self.async_create_entry(
+                title="KI-Essensplaner",
+                data={
+                    CONF_API_URL: self._api_url,
+                    CONF_API_TOKEN: self._api_token,
+                },
+            )
+        else:
+            return self.async_abort(reason="auth_failed")
 
     async def async_step_notebook_selection(
         self, user_input: dict[str, Any] | None = None

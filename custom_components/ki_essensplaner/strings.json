@@ -18,7 +18,11 @@
       },
       "onenote_auth": {
         "title": "OneNote Authentication",
-        "description": "To import your meal plans from OneNote, you need to authenticate.\n\n1. Open a terminal on your Home Assistant server\n2. Run: `python -m src.importers.onenote auth`\n3. Follow the device code authentication flow\n4. Return here and click Submit when done\n\nAlternatively, you can skip this step and authenticate later."
+        "description": "To connect your OneNote account:\n\n**1.** Open this link in a new tab:\n**{verification_uri}**\n\n**2.** Enter this code:\n# {user_code}\n\n**3.** Sign in with your Microsoft account\n\n**4.** Click 'Submit' below when done\n\nThe import will start automatically after authentication."
+      },
+      "onenote_auth_wait": {
+        "title": "Waiting for Authentication",
+        "description": "Please complete the authentication in your browser.\n\nOnce you've signed in with Microsoft, the setup will continue automatically."
       },
       "notebook_selection": {
         "title": "Select Notebooks",
@@ -39,7 +43,9 @@
     "abort": {
       "already_configured": "This integration is already configured.",
       "no_notebooks": "No notebooks available. Please authenticate with OneNote first.",
-      "import_failed": "Failed to import data from selected notebooks."
+      "import_failed": "Failed to import data from selected notebooks.",
+      "auth_start_failed": "Failed to start OneNote authentication. Please check that the Add-on is running.",
+      "auth_failed": "OneNote authentication failed or timed out. Please try again."
     }
   },
   "entity": {
