@@ -48,6 +48,11 @@ async def async_setup_entry(
 
         # Next meal sensor
         NextMealSensor(coordinator, entry),
+
+        # Shopping list sensors
+        ShoppingListCountSensor(coordinator, entry),
+        BiolandCountSensor(coordinator, entry),
+        ReweCountSensor(coordinator, entry),
     ]
 
     # Add 14 slot sensors (7 days × 2 meals)
@@ -600,4 +605,152 @@ class MultiDayOverviewSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
             "groups": self._multi_day_groups,
             "total_prep_meals": sum(g.get("total_days", 1) for g in self._multi_day_groups),
             "unique_recipes": len(self._multi_day_groups),
+        }
+
+
+class ShoppingListCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor for total shopping list item count."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Einkaufsliste Anzahl"
+    _attr_icon = "mdi:cart"
+    _attr_native_unit_of_measurement = "Positionen"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_shopping_list_count"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+        self._shopping_list_data = None
+
+    async def async_update(self) -> None:
+        """Update the sensor."""
+        await super().async_update()
+        self._shopping_list_data = await self.coordinator.get_shopping_list()
+
+    @property
+    def native_value(self) -> int:
+        """Return the total number of shopping list items."""
+        if self._shopping_list_data is None:
+            return 0
+        return len(self._shopping_list_data.get("items", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self._shopping_list_data is None:
+            return {
+                "week_start": None,
+                "recipe_count": 0,
+                "household_size": 2,
+                "items": [],
+            }
+
+        return {
+            "week_start": self._shopping_list_data.get("week_start"),
+            "recipe_count": self._shopping_list_data.get("recipe_count", 0),
+            "household_size": self._shopping_list_data.get("household_size", 2),
+            "items": self._shopping_list_data.get("items", []),
+        }
+
+
+class BiolandCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor for Bioland shopping list item count."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Bioland Anzahl"
+    _attr_icon = "mdi:cart"
+    _attr_native_unit_of_measurement = "Positionen"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_bioland_count"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+        self._split_list_data = None
+
+    async def async_update(self) -> None:
+        """Update the sensor."""
+        await super().async_update()
+        self._split_list_data = await self.coordinator.get_split_shopping_list()
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of Bioland items."""
+        if self._split_list_data is None:
+            return 0
+        return len(self._split_list_data.get("bioland", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self._split_list_data is None:
+            return {
+                "items": [],
+                "week_start": None,
+            }
+
+        return {
+            "items": self._split_list_data.get("bioland", []),
+            "week_start": self._split_list_data.get("week_start"),
+        }
+
+
+class ReweCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor for Rewe shopping list item count."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Rewe Anzahl"
+    _attr_icon = "mdi:cart"
+    _attr_native_unit_of_measurement = "Positionen"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_rewe_count"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+        self._split_list_data = None
+
+    async def async_update(self) -> None:
+        """Update the sensor."""
+        await super().async_update()
+        self._split_list_data = await self.coordinator.get_split_shopping_list()
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of Rewe items."""
+        if self._split_list_data is None:
+            return 0
+        return len(self._split_list_data.get("rewe", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self._split_list_data is None:
+            return {
+                "items": [],
+                "week_start": None,
+            }
+
+        return {
+            "items": self._split_list_data.get("rewe", []),
+            "week_start": self._split_list_data.get("week_start"),
         }

@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 2.4 (Update: Issue #31 implementiert - Multi-Day Meal Prep (Vorkochen), 03.02.2026)
+**Version:** 2.5 (Update: Issue #27 implementiert - Einkaufslistenmodul für HomeAssistant, 03.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -286,10 +286,14 @@ service: ki_essensplaner.delete_weekly_plan
   - 14 Slot-Sensoren (Mo-So × Mittag/Abend)
   - `sensor.essensplaner_naechste_mahlzeit`
   - Kalender-Integration (optional)
-- Issue #27: Einkaufslistenmodul
-  - Einkaufsliste generieren Service
-  - Sensoren für Bioland/Rewe Anzahl
-  - Todo-Listen Sync
+- Issue #27 ✅: Einkaufslistenmodul
+  - 3 neue Sensoren: einkaufsliste_anzahl, bioland_anzahl, rewe_anzahl
+  - Vollständige Item-Listen als JSON in Sensor-Attributes
+  - Coordinator-Methoden: get_shopping_list(), get_split_shopping_list()
+  - Event ki_essensplaner_shopping_list_ready bei Plan-Generierung
+  - On-Demand Generierung via API (GET /api/shopping-list, GET /api/shopping-list/split)
+  - Automatische Skalierung nach Haushaltsgröße und Multi-Day Prep
+  - Todo-Listen Sync: Kann via Automationen konfiguriert werden
 - Issue #28: Automatisierungen & Events
   - Events für HA-Automations (plan_generated, shopping_list_ready, etc.)
   - Automation Blueprints

@@ -422,3 +422,53 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.error("Error fetching multi-day groups: %s", err)
             return []
+
+    async def get_shopping_list(self) -> dict[str, Any] | None:
+        """Get aggregated shopping list from API.
+
+        Returns:
+            Shopping list dict or None
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/shopping-list",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 404:
+                        return None
+                    else:
+                        error_text = await response.text()
+                        _LOGGER.warning("Failed to get shopping list: %s", error_text)
+                        return None
+        except Exception as err:
+            _LOGGER.error("Error fetching shopping list: %s", err)
+            return None
+
+    async def get_split_shopping_list(self) -> dict[str, Any] | None:
+        """Get shopping list split by store (Bioland/Rewe).
+
+        Returns:
+            Split shopping list dict or None
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/shopping-list/split",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status == 404:
+                        return None
+                    else:
+                        error_text = await response.text()
+                        _LOGGER.warning("Failed to get split shopping list: %s", error_text)
+                        return None
+        except Exception as err:
+            _LOGGER.error("Error fetching split shopping list: %s", err)
+            return None

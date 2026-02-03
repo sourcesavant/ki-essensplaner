@@ -105,6 +105,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.generate_weekly_plan()
 
+        # Fire event to signal that shopping list is ready
+        hass.bus.async_fire(
+            f"{DOMAIN}_shopping_list_ready",
+            {"message": "Weekly plan generated, shopping list is now available"},
+        )
+
     async def handle_select_recipe(call: ServiceCall) -> None:
         """Handle select_recipe service call."""
         weekday = call.data["weekday"]
