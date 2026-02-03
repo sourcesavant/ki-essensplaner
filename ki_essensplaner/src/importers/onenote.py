@@ -21,11 +21,10 @@ import os
 _data_dir = os.environ.get("DATA_DIR")
 if _data_dir:
     TOKEN_CACHE_PATH = Path(_data_dir) / "token_cache.json"
+    DEVICE_FLOW_CACHE_PATH = Path(_data_dir) / "device_flow_cache.json"
 else:
     TOKEN_CACHE_PATH = Path.home() / ".ki-essensplaner" / "token_cache.json"
-
-# Global storage for pending device flows (in-memory, single instance)
-_pending_device_flow: dict | None = None
+    DEVICE_FLOW_CACHE_PATH = Path.home() / ".ki-essensplaner" / "device_flow_cache.json"
 
 
 class OneNoteClient:
@@ -112,13 +111,14 @@ class OneNoteClient:
             Dict with user_code, verification_uri, message, expires_in
             or None if failed.
         """
-        global _pending_device_flow
-
         flow = self._app.initiate_device_flow(scopes=AzureConfig.SCOPES)
         if "user_code" not in flow:
             return None
 
-        _pending_device_flow = flow
+        # Save flow to file for persistence across API requests
+        DEVICE_FLOW_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DEVICE_FLOW_CACHE_PATH.write_text(json.dumps(flow))
+
         return {
             "user_code": flow["user_code"],
             "verification_uri": flow["verification_uri"],
@@ -135,14 +135,21 @@ class OneNoteClient:
         Returns:
             True if authenticated successfully.
         """
-        global _pending_device_flow
+        # Load flow from file
+        if not DEVICE_FLOW_CACHE_PATH.exists():
+            return False
 
-        if not _pending_device_flow:
+        try:
+            flow = json.loads(DEVICE_FLOW_CACHE_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
             return False
 
         # This will block until user completes auth or timeout
-        result = self._app.acquire_token_by_device_flow(_pending_device_flow)
-        _pending_device_flow = None
+        result = self._app.acquire_token_by_device_flow(flow)
+
+        # Clean up the flow cache
+        if DEVICE_FLOW_CACHE_PATH.exists():
+            DEVICE_FLOW_CACHE_PATH.unlink()
 
         if "access_token" in result:
             self._access_token = result["access_token"]
