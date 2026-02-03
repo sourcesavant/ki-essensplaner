@@ -331,8 +331,7 @@ def get_onenote_auth_status(_token: str = Depends(verify_token)) -> OneNoteAuthS
     """Check OneNote authentication status.
 
     Returns whether OneNote is authenticated and ready to use.
-    If not authenticated, user should run the CLI authentication:
-    `python -m src.importers.onenote auth`
+    If not authenticated, use the Home Assistant integration setup flow to authenticate.
     """
     if not _check_azure_configured():
         raise HTTPException(
@@ -375,7 +374,7 @@ def get_notebooks(_token: str = Depends(verify_token)) -> NotebooksResponse:
     if not authenticated:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="OneNote not authenticated. Please run: python -m src.importers.onenote auth",
+            detail="OneNote not authenticated. Please authenticate via Home Assistant integration setup or POST /api/onboarding/onenote/auth/start",
         )
 
     try:
