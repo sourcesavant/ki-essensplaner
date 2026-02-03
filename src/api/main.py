@@ -1,9 +1,19 @@
 """FastAPI application setup."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.config import config
+from src.core.database import init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup."""
+    init_db()
+    yield
 from src.api.routers.bioland import router as bioland_router
 from src.api.routers.config import router as config_router
 from src.api.routers.health import router as health_router
@@ -22,6 +32,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 # Configure CORS
