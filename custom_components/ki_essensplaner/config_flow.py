@@ -209,8 +209,17 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
                 elif not status.get("profile_generated"):
                     return await self.async_step_profile_generation()
 
-        # Show onboarding check form
-        next_step = status.get("next_step", "Complete onboarding to use all features")
+        # Show onboarding check form - determine next step text ourselves
+        if not status.get("azure_configured"):
+            next_step = "Azure in der Add-on Konfiguration einrichten"
+        elif not status.get("onenote_authenticated"):
+            next_step = "Klicken Sie auf 'Absenden' um OneNote zu verbinden"
+        elif not status.get("data_imported"):
+            next_step = "Daten werden importiert..."
+        elif not status.get("profile_generated"):
+            next_step = "Profil wird generiert..."
+        else:
+            next_step = "Bereit!"
 
         return self.async_show_form(
             step_id="onboarding_check",
