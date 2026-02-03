@@ -1,7 +1,7 @@
 name: "KI-Essensplaner"
 description: "KI-basierte Wochenplanung für Mahlzeiten mit Bioland-Integration"
 slug: "ki_essensplaner"
-version: "1.0.1"
+version: "1.0.2"
 arch:
   - amd64
   - aarch64
@@ -16,10 +16,14 @@ ports_description:
 options:
   api_token: ""
   openai_api_key: ""
+  azure_client_id: ""
+  azure_tenant_id: "consumers"
   log_level: "info"
 schema:
   api_token: str
   openai_api_key: str?
+  azure_client_id: str?
+  azure_tenant_id: str?
   log_level: list(debug|info|warning|error)?
 map:
   - share:rw

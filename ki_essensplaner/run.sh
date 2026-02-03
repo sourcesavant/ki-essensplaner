@@ -6,6 +6,8 @@
 # Read configuration from Home Assistant
 export API_TOKEN=$(bashio::config 'api_token')
 export OPENAI_API_KEY=$(bashio::config 'openai_api_key')
+export AZURE_CLIENT_ID=$(bashio::config 'azure_client_id')
+export AZURE_TENANT_ID=$(bashio::config 'azure_tenant_id')
 export LOG_LEVEL=$(bashio::config 'log_level')
 
 # Set data directory to Home Assistant share
