@@ -10,7 +10,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
+# dist/ - NOT ignored, contains Lovelace cards for HACS
 downloads/
 eggs/
 .eggs/
@@ -208,7 +208,15 @@ __marimo__/
 
 # Project-specific
 data/local/*.db
+data/local/*.json
 data/raw/*.html
 data/raw/*.json
-data/local/ingredient_categories.json
-data/local/preference_profile.json
+
+# Claude Code
+.claude/
+
+# Windows
+nul
+
+# IDE
+.idea/
