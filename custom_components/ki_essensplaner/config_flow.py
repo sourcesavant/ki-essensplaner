@@ -315,27 +315,15 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Wait for OneNote authentication to complete."""
         if user_input and user_input.get("skip"):
-            # Already authenticated
-            return self.async_create_entry(
-                title="KI-Essensplaner",
-                data={
-                    CONF_API_URL: self._api_url,
-                    CONF_API_TOKEN: self._api_token,
-                },
-            )
+            # Already authenticated, proceed to notebook selection
+            return await self.async_step_notebook_selection()
 
         # Wait for the authentication to complete
         result = await self._complete_device_flow()
 
         if result and result.get("authenticated"):
-            # Success! Auto-import runs in background
-            return self.async_create_entry(
-                title="KI-Essensplaner",
-                data={
-                    CONF_API_URL: self._api_url,
-                    CONF_API_TOKEN: self._api_token,
-                },
-            )
+            # Success! Now let user select notebooks
+            return await self.async_step_notebook_selection()
         else:
             return self.async_abort(reason="auth_failed")
 

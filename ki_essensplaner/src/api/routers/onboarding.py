@@ -255,9 +255,8 @@ def complete_onenote_auth(
     This endpoint will wait (up to 5 minutes) for the user to complete
     authentication at the Microsoft login page.
 
-    After successful authentication, it automatically:
-    1. Imports all notebooks
-    2. Generates the preference profile
+    After successful authentication, the user can select notebooks to import
+    via the notebook selection step in the config flow.
 
     Call this AFTER the user has entered the code at the verification URL.
     """
@@ -274,18 +273,13 @@ def complete_onenote_auth(
         success = client.complete_device_flow(timeout=300)
 
         if success:
-            # Get notebooks
+            # Get notebooks count
             notebooks = client.get_notebooks()
             notebook_count = len(notebooks)
 
-            if notebook_count > 0:
-                # Auto-import all notebooks in background
-                notebook_ids = [nb["id"] for nb in notebooks]
-                background_tasks.add_task(_auto_import_and_generate_profile, notebook_ids)
-
             return AuthCompleteResponse(
                 authenticated=True,
-                message=f"Successfully authenticated! Importing {notebook_count} notebooks and generating profile in background...",
+                message=f"Successfully authenticated! {notebook_count} notebooks available for import.",
                 notebooks_available=notebook_count,
             )
         else:
