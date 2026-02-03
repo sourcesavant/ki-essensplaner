@@ -1,4 +1,4 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
 FROM $BUILD_FROM
 
 # Set shell
@@ -13,9 +13,10 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install
+# Copy requirements and install (using venv to comply with PEP 668)
 COPY requirements.txt /app/
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . /app/

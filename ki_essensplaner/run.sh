@@ -22,6 +22,6 @@ if [ -z "${API_TOKEN}" ]; then
     bashio::log.warning "No API token configured. Protected endpoints will be unavailable."
 fi
 
-# Start the API server
+# Start the API server using venv
 cd /app
-exec python3 -m src.api
+exec /app/venv/bin/python -m src.api
