@@ -1,7 +1,7 @@
 name: "KI-Essensplaner"
 description: "KI-basierte Wochenplanung für Mahlzeiten mit Bioland-Integration"
 slug: "ki_essensplaner"
-version: "1.0.2"
+version: "1.0.3"
 arch:
   - amd64
   - aarch64

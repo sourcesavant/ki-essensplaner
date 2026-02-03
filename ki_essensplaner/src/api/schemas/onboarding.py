@@ -60,3 +60,20 @@ class OnboardingStatusResponse(BaseModel):
     profile_generated: bool
     ready_for_use: bool
     next_step: str | None = None
+
+
+class DeviceCodeResponse(BaseModel):
+    """Response with device code for OneNote authentication."""
+
+    user_code: str = Field(..., description="Code to enter at the verification URL")
+    verification_uri: str = Field(..., description="URL where user should enter the code")
+    message: str = Field(..., description="Instructions for the user")
+    expires_in: int = Field(..., description="Seconds until the code expires")
+
+
+class AuthCompleteResponse(BaseModel):
+    """Response after completing authentication."""
+
+    authenticated: bool
+    message: str
+    notebooks_available: int = 0

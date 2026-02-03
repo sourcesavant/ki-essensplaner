@@ -16,8 +16,16 @@ from src.models.meal_plan import DayOfWeek, MealCreate, MealPlanCreate, MealSlot
 
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
-# Token cache file path
-TOKEN_CACHE_PATH = Path.home() / ".ki-essensplaner" / "token_cache.json"
+# Token cache file path - use DATA_DIR if set (Home Assistant), otherwise home directory
+import os
+_data_dir = os.environ.get("DATA_DIR")
+if _data_dir:
+    TOKEN_CACHE_PATH = Path(_data_dir) / "token_cache.json"
+else:
+    TOKEN_CACHE_PATH = Path.home() / ".ki-essensplaner" / "token_cache.json"
+
+# Global storage for pending device flows (in-memory, single instance)
+_pending_device_flow: dict | None = None
 
 
 class OneNoteClient:
@@ -80,6 +88,67 @@ class OneNoteClient:
             return True
 
         print(f"Authentication failed: {result.get('error_description', 'Unknown error')}")
+        return False
+
+    def try_authenticate_from_cache(self) -> bool:
+        """Try to authenticate using cached token only.
+
+        Returns:
+            True if authenticated from cache, False if interactive auth needed.
+        """
+        accounts = self._app.get_accounts()
+        if accounts:
+            result = self._app.acquire_token_silent(AzureConfig.SCOPES, account=accounts[0])
+            if result and "access_token" in result:
+                self._access_token = result["access_token"]
+                self._save_token_cache()
+                return True
+        return False
+
+    def start_device_flow(self) -> dict | None:
+        """Start the device code flow and return flow data.
+
+        Returns:
+            Dict with user_code, verification_uri, message, expires_in
+            or None if failed.
+        """
+        global _pending_device_flow
+
+        flow = self._app.initiate_device_flow(scopes=AzureConfig.SCOPES)
+        if "user_code" not in flow:
+            return None
+
+        _pending_device_flow = flow
+        return {
+            "user_code": flow["user_code"],
+            "verification_uri": flow["verification_uri"],
+            "message": flow["message"],
+            "expires_in": flow.get("expires_in", 900),
+        }
+
+    def complete_device_flow(self, timeout: int = 300) -> bool:
+        """Complete the device code flow after user has authenticated.
+
+        Args:
+            timeout: Max seconds to wait for user to authenticate.
+
+        Returns:
+            True if authenticated successfully.
+        """
+        global _pending_device_flow
+
+        if not _pending_device_flow:
+            return False
+
+        # This will block until user completes auth or timeout
+        result = self._app.acquire_token_by_device_flow(_pending_device_flow)
+        _pending_device_flow = None
+
+        if "access_token" in result:
+            self._access_token = result["access_token"]
+            self._save_token_cache()
+            return True
+
         return False
 
     def _get_headers(self) -> dict[str, str]:

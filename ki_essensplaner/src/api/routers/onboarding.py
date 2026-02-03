@@ -7,6 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from src.api.auth import verify_token
 from src.api.schemas.onboarding import (
+    AuthCompleteResponse,
+    DeviceCodeResponse,
     ImportRequest,
     ImportResponse,
     NotebookInfo,
@@ -171,9 +173,9 @@ def get_onboarding_status(_token: str = Depends(verify_token)) -> OnboardingStat
     # Determine next step
     next_step = None
     if not azure_configured:
-        next_step = "Configure Azure credentials (AZURE_CLIENT_ID, AZURE_TENANT_ID in .env)"
+        next_step = "Configure Azure credentials (azure_client_id in addon configuration)"
     elif not onenote_authenticated:
-        next_step = "Authenticate with OneNote (run CLI: python -m src.importers.onenote)"
+        next_step = "Authenticate with OneNote (POST /api/onboarding/onenote/auth/start)"
     elif not data_imported:
         next_step = "Import data from OneNote notebooks (POST /api/onboarding/import)"
     elif not profile_generated:
@@ -189,6 +191,101 @@ def get_onboarding_status(_token: str = Depends(verify_token)) -> OnboardingStat
         ready_for_use=ready_for_use,
         next_step=next_step,
     )
+
+
+@router.post("/onenote/auth/start", response_model=DeviceCodeResponse)
+def start_onenote_auth(_token: str = Depends(verify_token)) -> DeviceCodeResponse:
+    """Start OneNote authentication using device code flow.
+
+    Returns a user code and URL. The user should:
+    1. Go to the verification URL
+    2. Enter the user code
+    3. Sign in with their Microsoft account
+    4. Call /api/onboarding/onenote/auth/complete to finish
+
+    The code expires after ~15 minutes.
+    """
+    if not _check_azure_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Azure credentials not configured. Set azure_client_id in addon configuration.",
+        )
+
+    try:
+        client = OneNoteClient()
+
+        # Check if already authenticated
+        if client.try_authenticate_from_cache():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Already authenticated with OneNote. No need to re-authenticate.",
+            )
+
+        # Start device flow
+        flow_data = client.start_device_flow()
+        if not flow_data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to start authentication flow.",
+            )
+
+        return DeviceCodeResponse(
+            user_code=flow_data["user_code"],
+            verification_uri=flow_data["verification_uri"],
+            message=flow_data["message"],
+            expires_in=flow_data["expires_in"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start authentication: {str(e)}",
+        )
+
+
+@router.post("/onenote/auth/complete", response_model=AuthCompleteResponse)
+def complete_onenote_auth(_token: str = Depends(verify_token)) -> AuthCompleteResponse:
+    """Complete OneNote authentication after user has entered the code.
+
+    This endpoint will wait (up to 5 minutes) for the user to complete
+    authentication at the Microsoft login page.
+
+    Call this AFTER the user has entered the code at the verification URL.
+    """
+    if not _check_azure_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Azure credentials not configured.",
+        )
+
+    try:
+        client = OneNoteClient()
+
+        # Complete the device flow (this blocks until user authenticates)
+        success = client.complete_device_flow(timeout=300)
+
+        if success:
+            # Get notebook count
+            notebooks = client.get_notebooks()
+            return AuthCompleteResponse(
+                authenticated=True,
+                message="Successfully authenticated with OneNote!",
+                notebooks_available=len(notebooks),
+            )
+        else:
+            return AuthCompleteResponse(
+                authenticated=False,
+                message="Authentication failed or timed out. Please try again.",
+                notebooks_available=0,
+            )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Authentication failed: {str(e)}",
+        )
 
 
 @router.get("/onenote/auth/status", response_model=OneNoteAuthStatusResponse)
