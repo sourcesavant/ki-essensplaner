@@ -40,12 +40,19 @@ def _check_onenote_authenticated() -> tuple[bool, str | None]:
     Returns:
         Tuple of (authenticated, user_email)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
+        logger.info("Checking OneNote authentication...")
         client = OneNoteClient()
+        logger.info("OneNoteClient created, attempting to get notebooks...")
         # Try to get notebooks - if this works, we're authenticated
         notebooks = client.get_notebooks()
+        logger.info(f"Successfully retrieved {len(notebooks)} notebooks")
         return True, None  # We don't get email from Graph API easily
-    except Exception:
+    except Exception as e:
+        logger.error(f"OneNote authentication check failed: {e}", exc_info=True)
         return False, None
 
 
