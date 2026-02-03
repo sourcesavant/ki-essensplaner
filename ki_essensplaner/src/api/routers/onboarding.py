@@ -246,11 +246,18 @@ def start_onenote_auth(_token: str = Depends(verify_token)) -> DeviceCodeRespons
 
 
 @router.post("/onenote/auth/complete", response_model=AuthCompleteResponse)
-def complete_onenote_auth(_token: str = Depends(verify_token)) -> AuthCompleteResponse:
+def complete_onenote_auth(
+    background_tasks: BackgroundTasks,
+    _token: str = Depends(verify_token),
+) -> AuthCompleteResponse:
     """Complete OneNote authentication after user has entered the code.
 
     This endpoint will wait (up to 5 minutes) for the user to complete
     authentication at the Microsoft login page.
+
+    After successful authentication, it automatically:
+    1. Imports all notebooks
+    2. Generates the preference profile
 
     Call this AFTER the user has entered the code at the verification URL.
     """
@@ -267,12 +274,19 @@ def complete_onenote_auth(_token: str = Depends(verify_token)) -> AuthCompleteRe
         success = client.complete_device_flow(timeout=300)
 
         if success:
-            # Get notebook count
+            # Get notebooks
             notebooks = client.get_notebooks()
+            notebook_count = len(notebooks)
+
+            if notebook_count > 0:
+                # Auto-import all notebooks in background
+                notebook_ids = [nb["id"] for nb in notebooks]
+                background_tasks.add_task(_auto_import_and_generate_profile, notebook_ids)
+
             return AuthCompleteResponse(
                 authenticated=True,
-                message="Successfully authenticated with OneNote!",
-                notebooks_available=len(notebooks),
+                message=f"Successfully authenticated! Importing {notebook_count} notebooks and generating profile in background...",
+                notebooks_available=notebook_count,
             )
         else:
             return AuthCompleteResponse(
@@ -286,6 +300,30 @@ def complete_onenote_auth(_token: str = Depends(verify_token)) -> AuthCompleteRe
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Authentication failed: {str(e)}",
         )
+
+
+def _auto_import_and_generate_profile(notebook_ids: list[str]) -> None:
+    """Background task to import notebooks and generate profile."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Starting auto-import of {len(notebook_ids)} notebooks...")
+
+        # Import from notebooks
+        result = _import_from_notebooks_sync(notebook_ids, None)
+        logger.info(f"Import complete: {result}")
+
+        # Generate profile
+        if _check_data_imported():
+            logger.info("Generating preference profile...")
+            profile_result = _generate_profile_sync()
+            logger.info(f"Profile generation complete: {profile_result}")
+        else:
+            logger.warning("No data imported, skipping profile generation")
+
+    except Exception as e:
+        logger.error(f"Auto-import failed: {e}")
 
 
 @router.get("/onenote/auth/status", response_model=OneNoteAuthStatusResponse)
