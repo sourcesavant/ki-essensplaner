@@ -20,6 +20,7 @@ class Recipe(BaseModel):
     fat_g: float | None = None
     protein_g: float | None = None
     carbs_g: float | None = None
+    servings: int | None = None
     created_at: datetime | None = None
 
     class Config:
@@ -40,3 +41,4 @@ class RecipeCreate(BaseModel):
     fat_g: float | None = None
     protein_g: float | None = None
     carbs_g: float | None = None
+    servings: int | None = None

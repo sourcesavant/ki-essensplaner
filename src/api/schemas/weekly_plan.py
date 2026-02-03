@@ -24,6 +24,9 @@ class SlotResponse(BaseModel):
     slot: str
     recommendations: list[RecipeResponse] = Field(default_factory=list)
     selected_index: int = 0
+    reuse_from: dict | None = None  # {"weekday": "...", "slot": "..."}
+    prep_days: int = 1
+    is_reuse_slot: bool = False
 
 
 class WeeklyPlanResponse(BaseModel):
@@ -49,3 +52,42 @@ class GenerateWeeklyPlanResponse(BaseModel):
 
     message: str
     task_id: str | None = None
+
+
+class SetMultiDayRequest(BaseModel):
+    """Request to configure multi-day meal prep."""
+
+    primary_weekday: str = Field(..., description="Weekday when cooking")
+    primary_slot: str = Field(..., description="Meal slot (Mittagessen/Abendessen)")
+    reuse_slots: list[dict] = Field(..., description="Slots that reuse this recipe")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "primary_weekday": "Sonntag",
+                "primary_slot": "Abendessen",
+                "reuse_slots": [
+                    {"weekday": "Montag", "slot": "Abendessen"},
+                    {"weekday": "Dienstag", "slot": "Abendessen"},
+                ],
+            }
+        }
+
+
+class MultiDayGroupResponse(BaseModel):
+    """Response for a multi-day group."""
+
+    primary_weekday: str
+    primary_slot: str
+    recipe_title: str | None
+    reuse_slots: list[dict]
+    total_days: int
+    multiplier: float
+
+
+class MultiDayResponse(BaseModel):
+    """Response after setting multi-day configuration."""
+
+    success: bool
+    groups: list[MultiDayGroupResponse]
+    affected_slots: list[str]

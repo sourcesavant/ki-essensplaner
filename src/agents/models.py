@@ -61,6 +61,7 @@ class ScoredRecipe:
     prep_time_minutes: int | None = None
     calories: int | None = None
     ingredients: list[str] = field(default_factory=list)
+    servings: int | None = None  # Number of servings in original recipe
 
     def __str__(self) -> str:
         source = "NEU" if self.is_new else "FAV"
@@ -76,11 +77,18 @@ class SlotRecommendation:
     slot: str
     recommendations: list[ScoredRecipe] = field(default_factory=list)
     selected_index: int = 0  # Index of user-selected recipe (default: top recommendation)
+    reuse_from: tuple[str, str] | None = None  # (weekday, slot) if reusing from another slot
+    prep_days: int = 1  # Number of days this recipe is prepped for
 
     @property
     def slot_group(self) -> SlotGroup:
         """Get the effort group for this slot."""
         return SLOT_GROUP_MAPPING.get((self.weekday, self.slot), SlotGroup.NORMAL)
+
+    @property
+    def is_reuse_slot(self) -> bool:
+        """True if this slot reuses a recipe from another slot."""
+        return self.reuse_from is not None
 
     @property
     def top_recipe(self) -> ScoredRecipe | None:
@@ -89,7 +97,9 @@ class SlotRecommendation:
 
     @property
     def selected_recipe(self) -> ScoredRecipe | None:
-        """Get the user-selected recipe."""
+        """Get the user-selected recipe (or None if reuse slot)."""
+        if self.is_reuse_slot:
+            return None  # Recipe comes from primary slot
         if 0 <= self.selected_index < len(self.recommendations):
             return self.recommendations[self.selected_index]
         return self.top_recipe
@@ -102,11 +112,33 @@ class SlotRecommendation:
         return False
 
     def __str__(self) -> str:
+        if self.is_reuse_slot:
+            return f"{self.weekday} {self.slot}: [Vom {self.reuse_from[0]} {self.reuse_from[1]}]"
         selected = self.selected_recipe
         if selected:
             marker = "" if self.selected_index == 0 else f" [#{self.selected_index + 1}]"
-            return f"{self.weekday} {self.slot}: {selected.title} ({selected.score:.0f}pt){marker}"
+            prep_marker = f" (×{self.prep_days})" if self.prep_days > 1 else ""
+            return f"{self.weekday} {self.slot}: {selected.title} ({selected.score:.0f}pt){marker}{prep_marker}"
         return f"{self.weekday} {self.slot}: Keine Empfehlung"
+
+
+@dataclass
+class MultiDayGroup:
+    """Group of slots that share the same recipe (meal prep)."""
+
+    primary_weekday: str
+    primary_slot: str
+    reuse_slots: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def total_days(self) -> int:
+        """Total number of days this recipe is used."""
+        return 1 + len(self.reuse_slots)
+
+    @property
+    def multiplier(self) -> float:
+        """Quantity multiplier for shopping list."""
+        return float(self.total_days)
 
 
 @dataclass
@@ -118,6 +150,7 @@ class WeeklyRecommendation:
     favorites_count: int = 0
     new_count: int = 0
     slots: list[SlotRecommendation] = field(default_factory=list)
+    multi_day_groups: list[MultiDayGroup] = field(default_factory=list)
 
     @property
     def total_slots(self) -> int:
@@ -152,6 +185,128 @@ class WeeklyRecommendation:
                 result.append((slot.weekday, slot.slot, recipe))
         return result
 
+    def get_recipe_for_slot(self, weekday: str, slot: str) -> ScoredRecipe | None:
+        """Get recipe for slot, following reuse reference if needed."""
+        target = self.get_slot(weekday, slot)
+        if not target:
+            return None
+
+        if target.reuse_from:
+            primary_weekday, primary_slot = target.reuse_from
+            primary = self.get_slot(primary_weekday, primary_slot)
+            if primary:
+                return primary.selected_recipe
+            return None
+
+        return target.selected_recipe
+
+    def set_multi_day(
+        self,
+        primary_weekday: str,
+        primary_slot: str,
+        reuse_slots: list[tuple[str, str]],
+    ) -> bool:
+        """Configure a recipe to be used for multiple days.
+
+        Args:
+            primary_weekday: Weekday when cooking
+            primary_slot: Meal slot (Mittagessen/Abendessen)
+            reuse_slots: List of (weekday, slot) tuples to reuse this recipe
+
+        Returns:
+            True if successful, False otherwise
+        """
+        primary = self.get_slot(primary_weekday, primary_slot)
+        if not primary:
+            return False
+
+        # Configure primary slot
+        primary.prep_days = 1 + len(reuse_slots)
+        primary.reuse_from = None
+
+        # Configure reuse slots
+        for weekday, slot_name in reuse_slots:
+            reuse = self.get_slot(weekday, slot_name)
+            if reuse:
+                reuse.reuse_from = (primary_weekday, primary_slot)
+                reuse.recommendations = []  # No own recommendations
+                reuse.prep_days = 1
+
+        # Save group
+        group = MultiDayGroup(
+            primary_weekday=primary_weekday,
+            primary_slot=primary_slot,
+            reuse_slots=reuse_slots,
+        )
+
+        # Remove old group for this primary if exists
+        self.multi_day_groups = [
+            g
+            for g in self.multi_day_groups
+            if not (g.primary_weekday == primary_weekday and g.primary_slot == primary_slot)
+        ]
+        self.multi_day_groups.append(group)
+
+        return True
+
+    def clear_multi_day(self, weekday: str, slot: str) -> bool:
+        """Remove multi-day configuration for a slot.
+
+        Args:
+            weekday: Weekday
+            slot: Meal slot
+
+        Returns:
+            True if successful, False otherwise
+        """
+        target = self.get_slot(weekday, slot)
+        if not target:
+            return False
+
+        # If it's a reuse slot, only free this one
+        if target.reuse_from:
+            primary_weekday, primary_slot = target.reuse_from
+            target.reuse_from = None
+
+            # Update primary slot
+            primary = self.get_slot(primary_weekday, primary_slot)
+            if primary:
+                primary.prep_days = max(1, primary.prep_days - 1)
+
+            # Update group
+            for group in self.multi_day_groups:
+                if group.primary_weekday == primary_weekday and group.primary_slot == primary_slot:
+                    group.reuse_slots = [
+                        (w, s) for w, s in group.reuse_slots if not (w == weekday and s == slot)
+                    ]
+                    if not group.reuse_slots:
+                        self.multi_day_groups.remove(group)
+                    break
+        else:
+            # It's a primary slot - free all reuse slots
+            for reuse_weekday, reuse_slot in self._get_reuse_slots_for(weekday, slot):
+                reuse = self.get_slot(reuse_weekday, reuse_slot)
+                if reuse:
+                    reuse.reuse_from = None
+
+            target.prep_days = 1
+
+            # Remove group
+            self.multi_day_groups = [
+                g
+                for g in self.multi_day_groups
+                if not (g.primary_weekday == weekday and g.primary_slot == slot)
+            ]
+
+        return True
+
+    def _get_reuse_slots_for(self, weekday: str, slot: str) -> list[tuple[str, str]]:
+        """Get all reuse slots for a primary slot."""
+        for group in self.multi_day_groups:
+            if group.primary_weekday == weekday and group.primary_slot == slot:
+                return group.reuse_slots
+        return []
+
     def summary(self) -> str:
         """Generate a summary of the weekly plan."""
         lines = [
@@ -172,11 +327,21 @@ class WeeklyRecommendation:
             "week_start": self.week_start,
             "favorites_count": self.favorites_count,
             "new_count": self.new_count,
+            "multi_day_groups": [
+                {
+                    "primary_weekday": g.primary_weekday,
+                    "primary_slot": g.primary_slot,
+                    "reuse_slots": g.reuse_slots,
+                }
+                for g in self.multi_day_groups
+            ],
             "slots": [
                 {
                     "weekday": s.weekday,
                     "slot": s.slot,
                     "selected_index": s.selected_index,
+                    "reuse_from": s.reuse_from,
+                    "prep_days": s.prep_days,
                     "recommendations": [
                         {
                             "title": r.title,
@@ -188,6 +353,7 @@ class WeeklyRecommendation:
                             "prep_time_minutes": r.prep_time_minutes,
                             "calories": r.calories,
                             "ingredients": r.ingredients,
+                            "servings": r.servings,
                         }
                         for r in s.recommendations
                     ],
@@ -216,15 +382,44 @@ class WeeklyRecommendation:
                     prep_time_minutes=r.get("prep_time_minutes"),
                     calories=r.get("calories"),
                     ingredients=r.get("ingredients", []),
+                    servings=r.get("servings"),
                 )
                 for r in s_data.get("recommendations", [])
             ]
+
+            # Parse reuse_from tuple
+            reuse_from = s_data.get("reuse_from")
+            if reuse_from and isinstance(reuse_from, list) and len(reuse_from) == 2:
+                reuse_from = tuple(reuse_from)
+            elif reuse_from and isinstance(reuse_from, tuple):
+                pass  # Already a tuple
+            else:
+                reuse_from = None
+
             slots.append(
                 SlotRecommendation(
                     weekday=s_data["weekday"],
                     slot=s_data["slot"],
                     recommendations=recommendations,
                     selected_index=s_data.get("selected_index", 0),
+                    reuse_from=reuse_from,
+                    prep_days=s_data.get("prep_days", 1),
+                )
+            )
+
+        # Parse multi_day_groups
+        multi_day_groups = []
+        for g_data in data.get("multi_day_groups", []):
+            # Convert reuse_slots to list of tuples
+            reuse_slots = [
+                tuple(rs) if isinstance(rs, list) else rs
+                for rs in g_data.get("reuse_slots", [])
+            ]
+            multi_day_groups.append(
+                MultiDayGroup(
+                    primary_weekday=g_data["primary_weekday"],
+                    primary_slot=g_data["primary_slot"],
+                    reuse_slots=reuse_slots,
                 )
             )
 
@@ -234,6 +429,7 @@ class WeeklyRecommendation:
             favorites_count=data.get("favorites_count", 0),
             new_count=data.get("new_count", 0),
             slots=slots,
+            multi_day_groups=multi_day_groups,
         )
 
     @classmethod

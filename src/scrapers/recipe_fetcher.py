@@ -88,6 +88,33 @@ def parse_nutrition_value(value: str | None) -> float | None:
     return None
 
 
+def parse_servings(yields_str: str | None) -> int | None:
+    """Parse servings from yields string.
+
+    Examples:
+        '4 Portionen' -> 4
+        '4' -> 4
+        'für 4 Personen' -> 4
+        'Serves 4' -> 4
+        '2-4 Portionen' -> 4 (take the maximum)
+
+    Args:
+        yields_str: Raw yields string from recipe
+
+    Returns:
+        Number of servings or None if parsing failed
+    """
+    if not yields_str:
+        return None
+
+    # Pattern for single number: "4 Portionen", "4", "für 4 Personen", "Serves 4"
+    match = re.search(r'(\d+)', yields_str)
+    if match:
+        return int(match.group(1))
+
+    return None
+
+
 def extract_source_from_url(url: str) -> str:
     """Extract source name from URL domain.
 
@@ -164,6 +191,14 @@ def scrape_recipe(url: str) -> RecipeCreate | None:
         except Exception:
             pass
 
+        # Get servings
+        servings = None
+        try:
+            yields_str = scraper.yields()
+            servings = parse_servings(yields_str)
+        except Exception:
+            pass
+
         return RecipeCreate(
             title=scraper.title(),
             source=extract_source_from_url(url),
@@ -175,6 +210,7 @@ def scrape_recipe(url: str) -> RecipeCreate | None:
             fat_g=fat_g,
             protein_g=protein_g,
             carbs_g=carbs_g,
+            servings=servings,
         )
 
     except WebsiteNotImplementedError:

@@ -1,7 +1,7 @@
 # PRD.md: KI-Essensplaner (sourcesavant/ki-essensplaner)
 
 **Repo:** https://github.com/sourcesavant/ki-essensplaner
-**Version:** 2.2 (Update: Issue #26 implementiert - Wochenplanmodul komplett, 02.02.2026)
+**Version:** 2.4 (Update: Issue #31 implementiert - Multi-Day Meal Prep (Vorkochen), 03.02.2026)
 **Entwickler:** sourcesavant (Windows 11, PyCharm Community, Python 3.12+)
 
 ## Projekt-Ziel
@@ -298,6 +298,63 @@ service: ki_essensplaner.delete_weekly_plan
   - Wochenplan-Card (7×2 Grid, Rezeptauswahl)
   - Einkaufslisten-Card (Tabs Bioland/Rewe, Checkboxen)
 
+### Phase 8: Personalisierung 🏗️
+
+**Features:**
+- Haushaltsgröße konfigurierbar
+- Automatische Rezept-Skalierung
+- Vorkochen für mehrere Tage (Meal Prep)
+
+**Issues:**
+- Issue #30 ✅: Portionenanzahl & automatische Rezept-Skalierung
+  - Haushaltsgröße konfigurieren (1-10 Personen)
+  - `servings`-Feld in Rezepten (via recipe-scrapers)
+  - Automatische Mengen-Skalierung in Einkaufsliste
+  - Skalierungs-Info für Transparenz (`scale_info`)
+  - Rundung auf sinnvolle Werte (10g, ganze Stück, 0.5 EL)
+  - API: `GET/PUT /api/config`, `GET /api/config/household-size`
+  - HA: `sensor.essensplaner_household_size` + `ki_essensplaner.set_household_size`
+  - Config-Persistenz in `data/local/config.json`
+
+- Issue #31 ✅: Vorkochen für mehrere Tage (Meal Prep)
+  - Multi-Day Gruppen (primary_weekday/slot + reuse_slots)
+  - Slot-Types: Primary Slots (mit prep_days) + Reuse Slots (is_reuse_slot)
+  - Automatische Mengen-Multiplikation in Einkaufsliste
+  - Transparenz: multi_day_info mit cook_on/eat_on/total_days/multiplier
+  - API: `POST/DELETE/GET /api/weekly-plan/multi-day`
+  - HA: `ki_essensplaner.set_multi_day` (reuse_days Parameter) + `ki_essensplaner.clear_multi_day`
+  - Sensoren: `sensor.essensplaner_multi_day_overview` + dynamische Icons (Leftovers)
+  - JSON-Persistenz mit Serialisierung von multi_day_groups
+
+**Beispiel Meal Prep:**
+```
+Sonntag Abendessen: Lasagne (Kochtag, 3x Menge)
+  → Montag Abendessen: [Lasagne von Sonntag]
+  → Dienstag Abendessen: [Lasagne von Sonntag]
+```
+
+**Verwendung:**
+```bash
+# Haushaltsgröße setzen
+curl -X PUT -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"household_size": 4}' \
+  http://localhost:8099/api/config
+
+# Vorkochen konfigurieren
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "primary_weekday": "Sonntag",
+    "primary_slot": "Abendessen",
+    "reuse_slots": [
+      {"weekday": "Montag", "slot": "Abendessen"},
+      {"weekday": "Dienstag", "slot": "Abendessen"}
+    ]
+  }' \
+  http://localhost:8099/api/weekly-plan/multi-day
+```
+
 **Installation (privates Repo):**
 ```bash
 # Auf Home Assistant
@@ -310,6 +367,8 @@ cd /addons && git clone <repo> ki_essensplaner
 - Als User lade ich OneNote-Pläne hoch → Agent leitet Zutaten-Vorlieben + Aufwand-Profile ab.
 - Als User sage "Wochenplan mit favorisierten Zutaten" → Suche + Plan mit Neuen von eatsmarter.de.
 - Als HA-User sehe ich Pläne im Dashboard.
+- Als User konfiguriere ich meine Haushaltsgröße → Einkaufsliste skaliert Mengen automatisch.
+- Als User markiere ich Sonntags-Lasagne als "Vorkochen für 3 Tage" → Einkaufsliste enthält 3x Menge, Mo+Di zeigen "Lasagne von Sonntag".
 
 ## AI-Instructions (für Claude/Cursor)
 - Granular: Ein File pro Feature (src/profile/preferences.py).

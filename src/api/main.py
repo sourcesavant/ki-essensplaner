@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.config import config
 from src.api.routers.bioland import router as bioland_router
+from src.api.routers.config import router as config_router
 from src.api.routers.health import router as health_router
 from src.api.routers.onboarding import router as onboarding_router
 from src.api.routers.profile import router as profile_router
@@ -45,6 +46,7 @@ else:
 # Include routers
 app.include_router(health_router)
 app.include_router(profile_router)
+app.include_router(config_router)
 app.include_router(bioland_router)
 app.include_router(seasonality_router)
 app.include_router(weekly_plan_router)

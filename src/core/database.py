@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     fat_g REAL,
     protein_g REAL,
     carbs_g REAL,
+    servings INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -131,8 +132,8 @@ def create_recipe(recipe: RecipeCreate) -> Recipe:
         cursor = conn.execute(
             """
             INSERT INTO recipes (title, source, source_url, prep_time_minutes, ingredients, instructions,
-                                 calories, fat_g, protein_g, carbs_g)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 calories, fat_g, protein_g, carbs_g, servings)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 recipe.title,
@@ -145,6 +146,7 @@ def create_recipe(recipe: RecipeCreate) -> Recipe:
                 recipe.fat_g,
                 recipe.protein_g,
                 recipe.carbs_g,
+                recipe.servings,
             ),
         )
         return Recipe(
@@ -159,6 +161,7 @@ def create_recipe(recipe: RecipeCreate) -> Recipe:
             fat_g=recipe.fat_g,
             protein_g=recipe.protein_g,
             carbs_g=recipe.carbs_g,
+            servings=recipe.servings,
             created_at=datetime.now(),
         )
 
@@ -205,7 +208,7 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                     """
                     UPDATE recipes
                     SET title = ?, source = ?, prep_time_minutes = ?, ingredients = ?, instructions = ?,
-                        calories = ?, fat_g = ?, protein_g = ?, carbs_g = ?
+                        calories = ?, fat_g = ?, protein_g = ?, carbs_g = ?, servings = ?
                     WHERE source_url = ?
                     """,
                     (
@@ -218,6 +221,7 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                         recipe.fat_g,
                         recipe.protein_g,
                         recipe.carbs_g,
+                        recipe.servings,
                         recipe.source_url,
                     ),
                 )
@@ -233,6 +237,7 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                 fat_g=recipe.fat_g,
                 protein_g=recipe.protein_g,
                 carbs_g=recipe.carbs_g,
+                servings=recipe.servings,
                 created_at=existing.created_at,
             )
     return create_recipe(recipe)
@@ -253,6 +258,7 @@ def _row_to_recipe(row: sqlite3.Row) -> Recipe:
         fat_g=row["fat_g"] if "fat_g" in row.keys() else None,
         protein_g=row["protein_g"] if "protein_g" in row.keys() else None,
         carbs_g=row["carbs_g"] if "carbs_g" in row.keys() else None,
+        servings=row["servings"] if "servings" in row.keys() else None,
         created_at=row["created_at"],
     )
 

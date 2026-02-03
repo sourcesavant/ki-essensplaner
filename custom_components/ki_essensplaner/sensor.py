@@ -38,9 +38,13 @@ async def async_setup_entry(
         EssensplanerProfileStatusSensor(coordinator, entry),
         EssensplanerTopIngredientsSensor(coordinator, entry),
         EssensplanerExcludedIngredientsSensor(coordinator, entry),
+        HouseholdSizeSensor(coordinator, entry),
 
         # Weekly plan status sensor
         WeeklyPlanStatusSensor(coordinator, entry),
+
+        # Multi-day meal prep sensor
+        MultiDayOverviewSensor(coordinator, entry),
 
         # Next meal sensor
         NextMealSensor(coordinator, entry),
@@ -290,7 +294,6 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
     """Sensor for a single meal slot in weekly plan."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:food"
 
     def __init__(
         self,
@@ -365,7 +368,7 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
 
         selected_recipe = recommendations[selected_index]
 
-        return {
+        attrs = {
             "weekday": self._weekday,
             "slot": self._slot,
             "recipe_id": selected_recipe.get("recipe_id"),
@@ -377,7 +380,26 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
             "alternatives": len(recommendations) - 1,
             "selected_index": selected_index,
             "ingredients": selected_recipe.get("ingredients", []),
+            # Multi-day attributes
+            "is_reuse_slot": slot_data.get("is_reuse_slot", False),
+            "prep_days": slot_data.get("prep_days", 1),
         }
+
+        # Reuse info
+        if slot_data.get("reuse_from"):
+            attrs["reuse_from_weekday"] = slot_data["reuse_from"]["weekday"]
+            attrs["reuse_from_slot"] = slot_data["reuse_from"]["slot"]
+            attrs["cook_day"] = slot_data["reuse_from"]["weekday"]
+
+        return attrs
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on slot type."""
+        slot_data = self._get_slot_data()
+        if slot_data and slot_data.get("is_reuse_slot"):
+            return "mdi:food-takeout-box"  # Leftovers icon
+        return "mdi:silverware-fork-knife"
 
 
 class NextMealSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
@@ -492,4 +514,90 @@ class NextMealSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
             "prep_time_minutes": selected_recipe.get("prep_time_minutes"),
             "calories": selected_recipe.get("calories"),
             "ingredients": selected_recipe.get("ingredients", []),
+        }
+
+
+class HouseholdSizeSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor for household size configuration."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Household Size"
+    _attr_icon = "mdi:account-group"
+    _attr_native_unit_of_measurement = "Personen"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_household_size"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+        self._config_data: dict[str, Any] | None = None
+
+    async def async_update(self) -> None:
+        """Update the sensor."""
+        await super().async_update()
+        self._config_data = await self.coordinator.get_config()
+
+    @property
+    def native_value(self) -> int:
+        """Return household size."""
+        if self._config_data is None:
+            return 2
+        return self._config_data.get("household_size", 2)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self._config_data is None:
+            return {}
+
+        return {
+            "updated_at": self._config_data.get("updated_at"),
+        }
+
+
+class MultiDayOverviewSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor showing multi-day meal prep overview."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Vorkochen"
+    _attr_icon = "mdi:pot-steam"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_multi_day_overview"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+        self._multi_day_groups: list[dict] = []
+
+    async def async_update(self) -> None:
+        """Update the sensor."""
+        await super().async_update()
+        self._multi_day_groups = await self.coordinator.get_multi_day_groups()
+
+    @property
+    def native_value(self) -> str:
+        """Return number of multi-day groups."""
+        if not self._multi_day_groups:
+            return "Kein Vorkochen"
+        return f"{len(self._multi_day_groups)} Gerichte"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return multi-day details."""
+        return {
+            "groups": self._multi_day_groups,
+            "total_prep_meals": sum(g.get("total_days", 1) for g in self._multi_day_groups),
+            "unique_recipes": len(self._multi_day_groups),
         }

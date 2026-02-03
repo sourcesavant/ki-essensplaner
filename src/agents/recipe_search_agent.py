@@ -230,6 +230,7 @@ def _search_new_recipes(
                 is_new=True,
                 prep_time_minutes=result.prep_time_minutes,
                 calories=result.calories,
+                servings=None,  # Not available yet, will be loaded if selected
             )
             all_results.append(scored)
 
@@ -265,6 +266,15 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
             print(f"    Loading details: {recipe.title[:40]}...")
             scraper = scrape_me(recipe.url)
 
+            # Get servings
+            servings = None
+            try:
+                from src.scrapers.recipe_fetcher import parse_servings
+                yields_str = scraper.yields()
+                servings = parse_servings(yields_str)
+            except Exception:
+                pass
+
             # Create full Recipe object
             full_recipe = Recipe(
                 title=scraper.title(),
@@ -273,6 +283,7 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
                 prep_time_minutes=scraper.total_time() or recipe.prep_time_minutes,
                 ingredients=scraper.ingredients(),
                 calories=recipe.calories,
+                servings=servings,
             )
 
             # Check viability with full ingredients
@@ -294,6 +305,7 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
                 prep_time_minutes=full_recipe.prep_time_minutes,
                 calories=recipe.calories,
                 ingredients=full_recipe.ingredients,
+                servings=servings,
             )
             detailed_recipes.append(detailed)
 
@@ -344,6 +356,7 @@ def _score_favorites(
             prep_time_minutes=recipe.prep_time_minutes,
             calories=recipe.calories,
             ingredients=recipe.ingredients,
+            servings=recipe.servings,
         )
         scored_favorites.append(scored)
 

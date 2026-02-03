@@ -305,3 +305,120 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except aiohttp.ClientError as err:
             _LOGGER.error("Error deleting weekly plan: %s", err)
             raise UpdateFailed(f"Error deleting weekly plan: {err}") from err
+
+    async def get_config(self) -> dict[str, Any] | None:
+        """Get configuration from API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/config",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return None
+        except Exception as err:
+            _LOGGER.error("Error fetching config: %s", err)
+            return None
+
+    async def set_household_size(self, size: int) -> None:
+        """Set household size via API.
+
+        Args:
+            size: Number of people (1-10)
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    f"{self.api_url}/api/config",
+                    headers=self._get_headers(),
+                    json={"household_size": size},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set household size: %s", error_text)
+                        raise UpdateFailed(f"Failed to set household size: {error_text}")
+            # Refresh coordinator data after config update
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting household size: %s", err)
+            raise UpdateFailed(f"Error setting household size: {err}") from err
+
+    async def set_multi_day(
+        self,
+        primary_weekday: str,
+        primary_slot: str,
+        reuse_slots: list[dict],
+    ) -> None:
+        """Configure multi-day meal prep via API.
+
+        Args:
+            primary_weekday: Weekday when cooking
+            primary_slot: Meal slot (Mittagessen/Abendessen)
+            reuse_slots: List of {"weekday": "...", "slot": "..."} dicts
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/weekly-plan/multi-day",
+                    headers=self._get_headers(),
+                    json={
+                        "primary_weekday": primary_weekday,
+                        "primary_slot": primary_slot,
+                        "reuse_slots": reuse_slots,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set multi-day: %s", error_text)
+                        raise UpdateFailed(f"Failed to set multi-day: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting multi-day: %s", err)
+            raise UpdateFailed(f"Error setting multi-day: {err}") from err
+
+    async def clear_multi_day(self, weekday: str, slot: str) -> None:
+        """Clear multi-day configuration via API.
+
+        Args:
+            weekday: Weekday
+            slot: Meal slot
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.api_url}/api/weekly-plan/multi-day/{weekday}/{slot}",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to clear multi-day: %s", error_text)
+                        raise UpdateFailed(f"Failed to clear multi-day: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error clearing multi-day: %s", err)
+            raise UpdateFailed(f"Error clearing multi-day: {err}") from err
+
+    async def get_multi_day_groups(self) -> list[dict]:
+        """Get all multi-day groups.
+
+        Returns:
+            List of multi-day group dicts
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/weekly-plan/multi-day",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return []
+        except Exception as err:
+            _LOGGER.error("Error fetching multi-day groups: %s", err)
+            return []

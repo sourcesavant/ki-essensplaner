@@ -60,6 +60,9 @@ class ShoppingList:
     items: list[ShoppingItem] = field(default_factory=list)
     week_start: str = ""
     recipe_count: int = 0
+    household_size: int = 2
+    scale_info: list[dict] = field(default_factory=list)
+    multi_day_info: list[dict] = field(default_factory=list)
 
     def __str__(self) -> str:
         lines = [f"Einkaufsliste für Woche ab {self.week_start}", ""]
@@ -105,6 +108,9 @@ class ShoppingList:
         return {
             "week_start": self.week_start,
             "recipe_count": self.recipe_count,
+            "household_size": self.household_size,
+            "scale_info": self.scale_info,
+            "multi_day_info": self.multi_day_info,
             "items": [
                 {
                     "ingredient": item.ingredient,
@@ -124,6 +130,7 @@ class SplitShoppingList:
     bioland: list[ShoppingItem] = field(default_factory=list)
     rewe: list[ShoppingItem] = field(default_factory=list)
     week_start: str = ""
+    household_size: int = 2
 
     def __str__(self) -> str:
         lines = [f"Einkaufslisten für Woche ab {self.week_start}", ""]
@@ -158,6 +165,7 @@ class SplitShoppingList:
         """Convert to dictionary for JSON serialization."""
         return {
             "week_start": self.week_start,
+            "household_size": self.household_size,
             "bioland": [
                 {
                     "ingredient": item.ingredient,
@@ -297,6 +305,30 @@ def _is_available_at_bioland(ingredient: str, available: set[str]) -> bool:
     return False
 
 
+def round_amount(amount: float, unit: str | None) -> float:
+    """Round amount to sensible values based on unit.
+
+    Args:
+        amount: The amount to round
+        unit: The unit (normalized)
+
+    Returns:
+        Rounded amount
+    """
+    if unit in ("gramm", "milliliter"):
+        # Round to nearest 10 (e.g., 167g -> 170g)
+        return round(amount / 10) * 10
+    elif unit in ("stück", "scheibe"):
+        # Round to whole numbers, minimum 1
+        return max(1, round(amount))
+    elif unit in ("esslöffel", "teelöffel"):
+        # Round to nearest 0.5
+        return round(amount * 2) / 2
+    else:
+        # Default: round to 1 decimal place
+        return round(amount, 1)
+
+
 def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingList:
     """Split a shopping list into Bioland and Rewe lists.
 
@@ -326,31 +358,79 @@ def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingLi
         bioland=bioland_items,
         rewe=rewe_items,
         week_start=shopping_list.week_start,
+        household_size=shopping_list.household_size,
     )
 
 
-def generate_shopping_list(plan: WeeklyRecommendation) -> ShoppingList:
+def generate_shopping_list(
+    plan: WeeklyRecommendation,
+    household_size: int | None = None,
+) -> ShoppingList:
     """Generate a shopping list from a weekly meal plan.
 
     Aggregates ingredients from all selected recipes, grouping by
-    normalized ingredient name and unit.
+    normalized ingredient name and unit. Automatically scales quantities
+    based on household size and multi-day meal prep.
 
     Args:
         plan: Weekly meal plan with selected recipes
+        household_size: Number of people (1-10). If None, loads from config.
 
     Returns:
-        ShoppingList with aggregated items
+        ShoppingList with aggregated and scaled items
     """
+    from src.core.user_config import get_household_size
+
+    if household_size is None:
+        household_size = get_household_size()
+
     # Collect all ingredients: {(ingredient, unit): {"amount": float, "recipes": [...]}}
     aggregated: dict[tuple[str, str | None], dict] = defaultdict(
         lambda: {"amount": 0.0, "recipes": [], "has_amount": False}
     )
 
     recipe_count = 0
-    selected_recipes = plan.get_selected_recipes()
+    scale_info: list[dict] = []
 
-    for weekday, slot, recipe in selected_recipes:
-        recipe_label = f"{weekday} {slot}"
+    # Process each slot
+    for slot_rec in plan.slots:
+        # Skip reuse slots (quantities come from primary slot)
+        if slot_rec.is_reuse_slot:
+            continue
+
+        recipe = slot_rec.selected_recipe
+        if not recipe:
+            continue
+
+        # Calculate scaling factors
+        recipe_servings = recipe.servings or 2  # Default: 2 servings
+        household_factor = household_size / recipe_servings
+
+        # Multi-day factor
+        prep_days_factor = slot_rec.prep_days  # 1, 2, 3, ...
+        total_factor = household_factor * prep_days_factor
+
+        # Recipe label for attribution
+        if slot_rec.prep_days > 1:
+            # List all days this recipe is used
+            source_days = [f"{slot_rec.weekday} {slot_rec.slot}"]
+            for group in plan.multi_day_groups:
+                if group.primary_weekday == slot_rec.weekday and group.primary_slot == slot_rec.slot:
+                    source_days.extend([f"{w} {s}" for w, s in group.reuse_slots])
+            recipe_label = " + ".join(source_days)
+        else:
+            recipe_label = f"{slot_rec.weekday} {slot_rec.slot}"
+
+        # Track scaling info for transparency
+        if recipe_servings != household_size or prep_days_factor > 1:
+            scale_info.append({
+                "slot": recipe_label,
+                "recipe": recipe.title,
+                "original_servings": recipe_servings,
+                "scaled_to": household_size,
+                "prep_days": prep_days_factor,
+                "factor": round(total_factor, 2),
+            })
 
         # Get ingredients - prefer from DB if recipe_id exists
         if recipe.recipe_id:
@@ -365,7 +445,9 @@ def generate_shopping_list(plan: WeeklyRecommendation) -> ShoppingList:
                 key = (ingredient, unit)
 
                 if amount:
-                    aggregated[key]["amount"] += amount
+                    # Scale the amount
+                    scaled_amount = amount * total_factor
+                    aggregated[key]["amount"] += scaled_amount
                     aggregated[key]["has_amount"] = True
 
                 if recipe_label not in aggregated[key]["recipes"]:
@@ -383,10 +465,15 @@ def generate_shopping_list(plan: WeeklyRecommendation) -> ShoppingList:
                 if recipe_label not in aggregated[key]["recipes"]:
                     aggregated[key]["recipes"].append(recipe_label)
 
-    # Convert to ShoppingItems
+    # Convert to ShoppingItems with rounded amounts
     items = []
     for (ingredient, unit), data in aggregated.items():
-        amount = data["amount"] if data["has_amount"] else None
+        if data["has_amount"]:
+            # Round to sensible values
+            amount = round_amount(data["amount"], unit)
+        else:
+            amount = None
+
         items.append(
             ShoppingItem(
                 ingredient=ingredient,
@@ -396,10 +483,28 @@ def generate_shopping_list(plan: WeeklyRecommendation) -> ShoppingList:
             )
         )
 
+    # Multi-day info for transparency
+    multi_day_info = []
+    for group in plan.multi_day_groups:
+        recipe = plan.get_recipe_for_slot(group.primary_weekday, group.primary_slot)
+        if recipe:
+            multi_day_info.append({
+                "recipe": recipe.title,
+                "cook_on": f"{group.primary_weekday} {group.primary_slot}",
+                "eat_on": [
+                    f"{group.primary_weekday} {group.primary_slot}"
+                ] + [f"{w} {s}" for w, s in group.reuse_slots],
+                "total_days": group.total_days,
+                "multiplier": group.multiplier,
+            })
+
     return ShoppingList(
         items=items,
         week_start=plan.week_start,
         recipe_count=recipe_count,
+        household_size=household_size,
+        scale_info=scale_info,
+        multi_day_info=multi_day_info,
     )
 
 

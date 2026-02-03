@@ -32,6 +32,21 @@ SELECT_RECIPE_SCHEMA = vol.Schema({
     vol.Required("recipe_index"): vol.All(vol.Coerce(int), vol.Range(min=0, max=4)),
 })
 
+SET_HOUSEHOLD_SIZE_SCHEMA = vol.Schema({
+    vol.Required("size"): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+})
+
+SET_MULTI_DAY_SCHEMA = vol.Schema({
+    vol.Required("primary_weekday"): cv.string,
+    vol.Required("primary_slot"): cv.string,
+    vol.Required("reuse_days"): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+})
+
+CLEAR_MULTI_DAY_SCHEMA = vol.Schema({
+    vol.Required("weekday"): cv.string,
+    vol.Required("slot"): cv.string,
+})
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up KI-Essensplaner from a config entry."""
@@ -104,6 +119,41 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.delete_weekly_plan()
 
+    async def handle_set_household_size(call: ServiceCall) -> None:
+        """Handle set_household_size service call."""
+        size = call.data["size"]
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.set_household_size(size)
+
+    async def handle_set_multi_day(call: ServiceCall) -> None:
+        """Handle set_multi_day service call."""
+        primary_weekday = call.data["primary_weekday"]
+        primary_slot = call.data["primary_slot"]
+        reuse_days = call.data["reuse_days"]
+
+        # Calculate reuse slots based on consecutive days
+        weekdays = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+        start_idx = weekdays.index(primary_weekday)
+        reuse_slots = []
+
+        for i in range(1, reuse_days + 1):
+            next_idx = (start_idx + i) % 7
+            reuse_slots.append({
+                "weekday": weekdays[next_idx],
+                "slot": primary_slot
+            })
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.set_multi_day(primary_weekday, primary_slot, reuse_slots)
+
+    async def handle_clear_multi_day(call: ServiceCall) -> None:
+        """Handle clear_multi_day service call."""
+        weekday = call.data["weekday"]
+        slot = call.data["slot"]
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.clear_multi_day(weekday, slot)
+
     # Register services
     hass.services.async_register(
         DOMAIN, "rate_recipe", handle_rate_recipe, schema=RATE_RECIPE_SCHEMA
@@ -126,6 +176,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "delete_weekly_plan", handle_delete_weekly_plan
     )
+    hass.services.async_register(
+        DOMAIN, "set_household_size", handle_set_household_size, schema=SET_HOUSEHOLD_SIZE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "set_multi_day", handle_set_multi_day, schema=SET_MULTI_DAY_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "clear_multi_day", handle_clear_multi_day, schema=CLEAR_MULTI_DAY_SCHEMA
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -142,5 +201,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "generate_weekly_plan")
             hass.services.async_remove(DOMAIN, "select_recipe")
             hass.services.async_remove(DOMAIN, "delete_weekly_plan")
+            hass.services.async_remove(DOMAIN, "set_household_size")
+            hass.services.async_remove(DOMAIN, "set_multi_day")
+            hass.services.async_remove(DOMAIN, "clear_multi_day")
 
     return unload_ok
