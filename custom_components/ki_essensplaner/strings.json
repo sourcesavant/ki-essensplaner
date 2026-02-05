@@ -42,6 +42,7 @@
     },
     "abort": {
       "already_configured": "This integration is already configured.",
+      "cannot_connect": "Cannot connect to the API. Please check the URL and token.",
       "no_notebooks": "No notebooks available. Please authenticate with OneNote first.",
       "import_failed": "Failed to import data from selected notebooks.",
       "auth_start_failed": "Failed to start OneNote authentication. Please check that the Add-on is running.",

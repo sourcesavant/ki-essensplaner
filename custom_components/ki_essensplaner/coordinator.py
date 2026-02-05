@@ -33,46 +33,64 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api_url = api_url.rstrip("/")
         self.api_token = api_token
         self._last_valid_data: dict[str, Any] | None = None
+        self._cache: dict[str, Any] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from API with offline caching support."""
         try:
             async with aiohttp.ClientSession() as session:
-                headers = {}
-                if self.api_token:
-                    headers["Authorization"] = f"Bearer {self.api_token}"
+                data = await self._fetch_health(session)
 
-                async with session.get(
-                    f"{self.api_url}/api/health",
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        # Cache valid data for offline fallback
-                        if data.get("status") != STATE_OFFLINE:
-                            self._last_valid_data = data
-                        return data
-                    else:
-                        _LOGGER.warning(
-                            "API returned status %s: %s",
-                            response.status,
-                            await response.text(),
-                        )
-                        # Return cached data if available
-                        if self._last_valid_data is not None:
-                            cached = self._last_valid_data.copy()
-                            cached["cached"] = True
-                            _LOGGER.info("Using cached data due to API error")
-                            return cached
+                data["profile"] = await self._fetch_cached_json(
+                    session,
+                    "profile",
+                    "GET",
+                    "/api/profile",
+                )
+                excluded = await self._fetch_cached_json(
+                    session,
+                    "excluded_ingredients",
+                    "GET",
+                    "/api/ingredients/excluded",
+                )
+                if isinstance(excluded, dict):
+                    excluded = excluded.get("ingredients", [])
+                data["excluded_ingredients"] = excluded or []
+                data["weekly_plan"] = await self._fetch_cached_json(
+                    session,
+                    "weekly_plan",
+                    "GET",
+                    "/api/weekly-plan",
+                    not_found_none=True,
+                )
+                data["config"] = await self._fetch_cached_json(
+                    session,
+                    "config",
+                    "GET",
+                    "/api/config",
+                )
+                data["multi_day_groups"] = await self._fetch_cached_json(
+                    session,
+                    "multi_day_groups",
+                    "GET",
+                    "/api/weekly-plan/multi-day",
+                ) or []
+                data["shopping_list"] = await self._fetch_cached_json(
+                    session,
+                    "shopping_list",
+                    "GET",
+                    "/api/shopping-list",
+                    not_found_none=True,
+                )
+                data["split_shopping_list"] = await self._fetch_cached_json(
+                    session,
+                    "split_shopping_list",
+                    "GET",
+                    "/api/shopping-list/split",
+                    not_found_none=True,
+                )
 
-                        return {
-                            "status": STATE_OFFLINE,
-                            "database_ok": False,
-                            "profile_age_days": None,
-                            "bioland_age_days": None,
-                            "cached": False,
-                        }
+                return data
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error connecting to API: %s", err)
@@ -81,7 +99,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 cached = self._last_valid_data.copy()
                 cached["cached"] = True
                 _LOGGER.info("Using cached data due to connection error")
-                return cached
+                return self._merge_cached_extras(cached)
             raise UpdateFailed(f"Error connecting to API: {err}") from err
         except Exception as err:
             _LOGGER.error("Unexpected error: %s", err)
@@ -90,7 +108,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 cached = self._last_valid_data.copy()
                 cached["cached"] = True
                 _LOGGER.info("Using cached data due to unexpected error")
-                return cached
+                return self._merge_cached_extras(cached)
             raise UpdateFailed(f"Unexpected error: {err}") from err
 
     def _get_headers(self) -> dict[str, str]:
@@ -99,6 +117,89 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.api_token:
             headers["Authorization"] = f"Bearer {self.api_token}"
         return headers
+
+    async def _fetch_health(self, session: aiohttp.ClientSession) -> dict[str, Any]:
+        """Fetch health data with offline caching support."""
+        headers = {}
+        if self.api_token:
+            headers["Authorization"] = f"Bearer {self.api_token}"
+
+        async with session.get(
+            f"{self.api_url}/api/health",
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                # Cache valid data for offline fallback
+                if data.get("status") != STATE_OFFLINE:
+                    self._last_valid_data = data
+                return data
+
+            _LOGGER.warning(
+                "API returned status %s: %s",
+                response.status,
+                await response.text(),
+            )
+
+            # Return cached data if available
+            if self._last_valid_data is not None:
+                cached = self._last_valid_data.copy()
+                cached["cached"] = True
+                _LOGGER.info("Using cached data due to API error")
+                return cached
+
+            return {
+                "status": STATE_OFFLINE,
+                "database_ok": False,
+                "profile_age_days": None,
+                "bioland_age_days": None,
+                "cached": False,
+            }
+
+    async def _fetch_cached_json(
+        self,
+        session: aiohttp.ClientSession,
+        cache_key: str,
+        method: str,
+        path: str,
+        *,
+        not_found_none: bool = False,
+        timeout: int = 10,
+    ) -> Any | None:
+        """Fetch JSON with caching fallback on errors."""
+        try:
+            async with session.request(
+                method,
+                f"{self.api_url}{path}",
+                headers=self._get_headers(),
+                timeout=aiohttp.ClientTimeout(total=timeout),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    self._cache[cache_key] = data
+                    return data
+                if not_found_none and response.status == 404:
+                    self._cache[cache_key] = None
+                    return None
+
+                _LOGGER.warning(
+                    "Failed to fetch %s (%s): %s",
+                    cache_key,
+                    response.status,
+                    await response.text(),
+                )
+        except Exception as err:
+            _LOGGER.error("Error fetching %s: %s", cache_key, err)
+
+        return self._cache.get(cache_key)
+
+    def _merge_cached_extras(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Merge cached extra payloads into the health data."""
+        merged = data.copy()
+        for key, value in self._cache.items():
+            merged.setdefault(key, value)
+        return merged
 
     async def rate_recipe(self, recipe_id: int, rating: int) -> None:
         """Rate a recipe via API.

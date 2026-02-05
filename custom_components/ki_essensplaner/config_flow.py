@@ -6,7 +6,6 @@ import aiohttp
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.const import CONF_URL
 from homeassistant.helpers import selector
 
 from .const import CONF_API_TOKEN, CONF_API_URL, DEFAULT_API_URL, DOMAIN
@@ -39,6 +38,8 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 valid = await self._test_api_connection(api_url, api_token)
                 if valid:
+                    await self.async_set_unique_id(DOMAIN)
+                    self._abort_if_unique_id_configured()
                     # Store for later steps
                     self._api_url = api_url
                     self._api_token = api_token
@@ -115,7 +116,7 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _get_notebooks(
         self, api_url: str, api_token: str | None
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, str]] | None:
         """Get available notebooks from API."""
         try:
             async with aiohttp.ClientSession() as session:
@@ -132,8 +133,8 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
                         data = await response.json()
                         return data.get("notebooks", [])
         except Exception:
-            pass
-        return []
+            return None
+        return None
 
     async def _trigger_import(
         self, api_url: str, api_token: str | None, notebook_ids: list[str]
@@ -208,6 +209,14 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
                     return await self.async_step_notebook_selection()
                 elif not status.get("profile_generated"):
                     return await self.async_step_profile_generation()
+                else:
+                    return self.async_create_entry(
+                        title="KI-Essensplaner",
+                        data={
+                            CONF_API_URL: self._api_url,
+                            CONF_API_TOKEN: self._api_token,
+                        },
+                    )
 
         # Show onboarding check form - determine next step text ourselves
         if not status.get("azure_configured"):
@@ -349,6 +358,9 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
         # Fetch notebooks
         notebooks = await self._get_notebooks(self._api_url, self._api_token)
         self._notebooks = notebooks
+
+        if notebooks is None:
+            return self.async_abort(reason="cannot_connect")
 
         if not notebooks:
             # No notebooks available - abort with clear error

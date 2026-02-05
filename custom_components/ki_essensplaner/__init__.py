@@ -122,7 +122,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
         # Send persistent notification
-        hass.services.async_call(
+        await hass.services.async_call(
             "persistent_notification",
             "create",
             {
@@ -130,6 +130,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "message": "Ein neuer Wochenplan wurde generiert. Die Einkaufsliste ist jetzt verfügbar.",
                 "notification_id": f"{DOMAIN}_plan_generated",
             },
+            blocking=False,
         )
 
     async def handle_select_recipe(call: ServiceCall) -> None:
