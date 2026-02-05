@@ -21,7 +21,7 @@ ENV PIP_CONFIG_FILE=/dev/null
 ENV PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_EXTRA_INDEX_URL=
 RUN python3 -m venv /app/venv && \
-    /app/venv/bin/pip install --no-cache-dir --index-url https://pypi.org/simple --timeout 300 --retries 10 -r requirements.txt
+    /app/venv/bin/pip install --isolated --no-cache-dir --index-url https://pypi.org/simple --timeout 300 --retries 10 -r requirements.txt
 
 # Copy application code
 COPY . /app/
