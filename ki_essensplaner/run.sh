@@ -9,6 +9,7 @@ export OPENAI_API_KEY=$(bashio::config 'openai_api_key')
 export AZURE_CLIENT_ID=$(bashio::config 'azure_client_id')
 export AZURE_TENANT_ID=$(bashio::config 'azure_tenant_id')
 export LOG_LEVEL=$(bashio::config 'log_level')
+export RECIPE_FETCH_DELAY=$(bashio::config 'recipe_fetch_delay')
 
 # Set data directory to Home Assistant share
 export DATA_DIR="/share/ki_essensplaner"

@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 import requests
 import asyncio
 import anyio
+import os
 
 from src.api.auth import verify_token
 from src.api.schemas.onboarding import (
@@ -478,6 +479,21 @@ async def import_data(
             msg = f"Import completed: {result}"
             logger.info(msg)
             print(msg, flush=True)
+            # Trigger recipe scraping after import
+            try:
+                from src.scrapers.recipe_fetcher import fetch_all_recipes
+                delay = float(os.getenv("RECIPE_FETCH_DELAY", "0.5"))
+                stats = await anyio.to_thread.run_sync(
+                    fetch_all_recipes,
+                    delay,
+                )
+                msg = f"Recipe fetch completed: {stats}"
+                logger.info(msg)
+                print(msg, flush=True)
+            except Exception as exc:
+                msg = f"Recipe fetch failed: {exc}"
+                logger.exception(msg)
+                print(msg, flush=True)
         except Exception as exc:
             msg = f"Import failed (unexpected): {exc}"
             logger.exception(msg)
