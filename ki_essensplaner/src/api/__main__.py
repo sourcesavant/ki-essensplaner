@@ -16,6 +16,7 @@ def main() -> None:
         host=config.host,
         port=config.port,
         reload=config.debug,
+        log_level=config.log_level,
     )
 
 

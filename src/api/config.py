@@ -16,6 +16,7 @@ class APIConfig:
     api_token: str | None = None
     debug: bool = False
     cors_origins: list[str] | None = None
+    log_level: str = "info"
 
     @classmethod
     def from_env(cls) -> "APIConfig":
@@ -29,6 +30,7 @@ class APIConfig:
             api_token=os.getenv("API_TOKEN"),
             debug=os.getenv("API_DEBUG", "").lower() in ("true", "1", "yes"),
             cors_origins=cors_origins,
+            log_level=os.getenv("API_LOG_LEVEL", os.getenv("LOG_LEVEL", "info")).lower(),
         )
 
 
