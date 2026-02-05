@@ -95,7 +95,15 @@ class OneNoteClient:
         Returns:
             True if authenticated from cache, False if interactive auth needed.
         """
+        import logging
+        logger = logging.getLogger(__name__)
         accounts = self._app.get_accounts()
+        logger.info(
+            "OneNote cache check: path=%s exists=%s accounts=%s",
+            str(TOKEN_CACHE_PATH),
+            TOKEN_CACHE_PATH.exists(),
+            len(accounts),
+        )
         if accounts:
             result = self._app.acquire_token_silent(AzureConfig.SCOPES, account=accounts[0])
             if result and "access_token" in result:
@@ -136,6 +144,13 @@ class OneNoteClient:
             True if authenticated successfully.
         """
         # Load flow from file
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Completing device flow: cache_path=%s exists=%s",
+            str(DEVICE_FLOW_CACHE_PATH),
+            DEVICE_FLOW_CACHE_PATH.exists(),
+        )
         if not DEVICE_FLOW_CACHE_PATH.exists():
             return False
 
@@ -154,6 +169,7 @@ class OneNoteClient:
         if "access_token" in result:
             self._access_token = result["access_token"]
             self._save_token_cache()
+            logger.info("Device flow complete: token cached=%s", TOKEN_CACHE_PATH.exists())
             return True
 
         return False
