@@ -11,8 +11,7 @@ import msal
 import requests
 
 from src.core.config import AzureConfig, RAW_DIR, ensure_directories
-from src.core.database import init_db, upsert_meal_plan, upsert_recipe
-from src.models.recipe import RecipeCreate
+from src.core.database import init_db, upsert_meal_plan
 from src.models.meal_plan import DayOfWeek, MealCreate, MealPlanCreate, MealSlot
 
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
@@ -308,14 +307,10 @@ class MealPlanParser:
                 header = paragraphs[0]  # e.g., "Sonntag + Montag Abendessen"
                 recipe = paragraphs[1]  # e.g., URL or recipe name
 
-                # Extract URL if present (prefer link targets, fall back to text URLs)
-                link_urls = re.findall(r'href="([^"]+)"', div_content)
-                if link_urls:
-                    recipe = link_urls[0]
-                else:
-                    text_urls = re.findall(r'(https?://\S+)', self._strip_html(div_content))
-                    if text_urls:
-                        recipe = text_urls[0].rstrip(').,;')
+                # Extract URL if present
+                url_match = re.search(r'href="([^"]+)"', div_content)
+                if url_match:
+                    recipe = url_match.group(1)
 
                 # Parse header for days and slot
                 parsed_meals = self._parse_header(header, recipe)
@@ -499,7 +494,6 @@ def import_meal_plans_cached(
 
     parser = MealPlanParser()
     imported_count = 0
-    created_recipes = 0
 
     for page in pages:
         page_id = page["id"]
@@ -511,26 +505,6 @@ def import_meal_plans_cached(
                 raw_path.write_text(content, encoding="utf-8")
 
             meal_plan = parser.parse(content, page_id)
-            # Upsert recipes for URL-based meals
-            for meal in meal_plan.meals:
-                if isinstance(meal.recipe_title, str) and meal.recipe_title.startswith("http"):
-                    recipe = upsert_recipe(
-                        RecipeCreate(
-                            title=meal.recipe_title,
-                            source="onenote",
-                            source_url=meal.recipe_title,
-                            prep_time_minutes=None,
-                            ingredients=[],
-                            instructions=None,
-                            calories=None,
-                            fat_g=None,
-                            protein_g=None,
-                            carbs_g=None,
-                            servings=None,
-                        )
-                    )
-                    meal.recipe_id = recipe.id
-                    created_recipes += 1
             upsert_meal_plan(meal_plan)
             imported_count += 1
         except requests.HTTPError:
@@ -538,11 +512,7 @@ def import_meal_plans_cached(
         except Exception:
             continue
 
-    return {
-        "pages_found": len(pages),
-        "meal_plans_imported": imported_count,
-        "recipes_imported": created_recipes,
-    }
+    return {"pages_found": len(pages), "meal_plans_imported": imported_count}
 
 
 def export_page_content(page_id: str):
