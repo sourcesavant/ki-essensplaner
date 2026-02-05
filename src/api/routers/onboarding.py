@@ -111,13 +111,17 @@ def _import_from_notebooks_sync(notebook_ids: list[str], notebook_filter: list[s
             export_raw=True,
         )
 
-        # Get recipe count
+        # Get recipe and meal counts
         with get_connection() as conn:
             recipe_count = conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
+            meal_count = conn.execute("SELECT COUNT(*) FROM meals").fetchone()[0]
+            plan_count = conn.execute("SELECT COUNT(*) FROM meal_plans").fetchone()[0]
 
         return {
             "pages_found": import_result.get("pages_found", 0),
             "recipes_imported": recipe_count,
+            "meals_imported": meal_count,
+            "meal_plans_imported": plan_count,
         }
 
     except Exception as e:
