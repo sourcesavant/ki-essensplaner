@@ -8,7 +8,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    py3-wheel
+    py3-wheel \
+    git
 
 # Set working directory
 WORKDIR /app
@@ -23,8 +24,10 @@ ENV PIP_EXTRA_INDEX_URL=
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --isolated --no-cache-dir --index-url https://pypi.org/simple --timeout 300 --retries 10 -r requirements.txt
 
-# Copy application code
-COPY . /app/
+# Fetch application code from repo root (avoid duplicated src in addon folder)
+ARG APP_REPO=https://github.com/sourcesavant/ki-essensplaner.git
+ARG APP_REF=master
+RUN git clone --depth 1 --branch ${APP_REF} ${APP_REPO} /app/app
 
 # Copy run script
 COPY run.sh /

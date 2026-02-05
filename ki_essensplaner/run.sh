@@ -25,5 +25,5 @@ if [ -z "${API_TOKEN}" ]; then
 fi
 
 # Start the API server using venv
-cd /app
+cd /app/app
 exec /app/venv/bin/python -m src.api
