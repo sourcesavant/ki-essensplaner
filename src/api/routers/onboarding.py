@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+import requests
 
 from src.api.auth import verify_token
 from src.api.schemas.onboarding import (
@@ -49,11 +50,13 @@ def _check_onenote_authenticated() -> tuple[bool, str | None]:
         if not client.try_authenticate_from_cache():
             logger.info("No cached OneNote token available.")
             return False, None
-        logger.info("OneNoteClient created, attempting to get notebooks...")
-        # Try to get notebooks - if this works, we're authenticated
-        notebooks = client.get_notebooks()
-        logger.info(f"Successfully retrieved {len(notebooks)} notebooks")
-        return True, None  # We don't get email from Graph API easily
+        logger.info("OneNoteClient created, checking cached token only...")
+        # Avoid calling Graph API here to prevent rate-limit loops
+        if client.try_authenticate_from_cache():
+            logger.info("Cached OneNote token is available")
+            return True, None
+        logger.info("No cached OneNote token available.")
+        return False, None
     except Exception as e:
         logger.error(f"OneNote authentication check failed: {e}", exc_info=True)
         return False, None
@@ -408,6 +411,11 @@ def get_notebooks(_token: str = Depends(verify_token)) -> NotebooksResponse:
             total=len(notebook_list),
         )
 
+    except requests.exceptions.RetryError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Graph API rate limit exceeded. Please wait and try again.",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
