@@ -20,6 +20,8 @@ mkdir -p "${DATA_DIR}"
 bashio::log.info "Starting KI-Essensplaner API..."
 bashio::log.info "API will be available at port 8099"
 if [ -d "/app/app/.git" ]; then
+    git -C /app/app fetch --depth 1 origin master >/dev/null 2>&1 || true
+    git -C /app/app reset --hard origin/master >/dev/null 2>&1 || true
     COMMIT=$(git -C /app/app rev-parse --short HEAD 2>/dev/null || true)
     if [ -n "${COMMIT}" ]; then
         bashio::log.info "Running commit: ${COMMIT}"
