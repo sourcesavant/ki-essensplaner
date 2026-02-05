@@ -440,16 +440,26 @@ def import_data(
             detail="OneNote not authenticated.",
         )
 
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "Import requested: notebook_ids=%s notebook_filter=%s",
+        request.notebook_ids,
+        request.notebook_filter,
+    )
+
     # For simplicity, run synchronously (small dataset)
     # In production, use background_tasks.add_task()
     result = _import_from_notebooks_sync(request.notebook_ids, request.notebook_filter)
 
     if "error" in result:
+        logger.error("Import failed: %s", result["error"])
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=result["error"],
         )
 
+    logger.info("Import completed: %s", result)
     return ImportResponse(
         message="Import completed successfully",
         status="completed",
