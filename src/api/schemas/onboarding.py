@@ -40,6 +40,8 @@ class ImportResponse(BaseModel):
     status: str  # "started", "completed"
     pages_found: int = 0
     recipes_imported: int = 0
+    meals_imported: int = 0
+    meal_plans_imported: int = 0
 
 
 class ProfileGenerateResponse(BaseModel):

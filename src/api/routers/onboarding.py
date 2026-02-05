@@ -471,6 +471,8 @@ def import_data(
         status="completed",
         pages_found=result["pages_found"],
         recipes_imported=result["recipes_imported"],
+        meals_imported=result.get("meals_imported", 0),
+        meal_plans_imported=result.get("meal_plans_imported", 0),
     )
 
 

@@ -150,9 +150,9 @@ class EssensplanerConfigFlow(ConfigFlow, domain=DOMAIN):
                     f"{api_url.rstrip('/')}/api/onboarding/import",
                     headers=headers,
                     json={"notebook_ids": notebook_ids},
-                    timeout=aiohttp.ClientTimeout(total=120),
+                    timeout=aiohttp.ClientTimeout(total=600),
                 ) as response:
-                    return response.status == 200
+                    return response.status in (200, 202)
         except Exception:
             return False
 
