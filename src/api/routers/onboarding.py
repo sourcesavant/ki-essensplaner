@@ -450,29 +450,27 @@ def import_data(
     logger.info(msg)
     print(msg, flush=True)
 
-    # For simplicity, run synchronously (small dataset)
-    # In production, use background_tasks.add_task()
-    result = _import_from_notebooks_sync(request.notebook_ids, request.notebook_filter)
-
-    if "error" in result:
-        msg = f"Import failed: {result['error']}"
-        logger.error(msg)
+    def _run_import_bg() -> None:
+        result = _import_from_notebooks_sync(request.notebook_ids, request.notebook_filter)
+        if "error" in result:
+            msg = f"Import failed: {result['error']}"
+            logger.error(msg)
+            print(msg, flush=True)
+            return
+        msg = f"Import completed: {result}"
+        logger.info(msg)
         print(msg, flush=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result["error"],
-        )
 
-    msg = f"Import completed: {result}"
-    logger.info(msg)
-    print(msg, flush=True)
+    # Run import in background to avoid request timeouts
+    background_tasks.add_task(_run_import_bg)
+
     return ImportResponse(
-        message="Import completed successfully",
-        status="completed",
-        pages_found=result["pages_found"],
-        recipes_imported=result["recipes_imported"],
-        meals_imported=result.get("meals_imported", 0),
-        meal_plans_imported=result.get("meal_plans_imported", 0),
+        message="Import started",
+        status="started",
+        pages_found=0,
+        recipes_imported=0,
+        meals_imported=0,
+        meal_plans_imported=0,
     )
 
 
