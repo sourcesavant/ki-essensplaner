@@ -161,7 +161,9 @@ class OneNoteClient:
     def _get_headers(self) -> dict[str, str]:
         """Get authorization headers."""
         if not self._access_token:
-            raise ValueError("Not authenticated. Call authenticate() first.")
+            # Attempt to load from cache on demand
+            if not self.try_authenticate_from_cache():
+                raise ValueError("Not authenticated. Call authenticate() first.")
         return {"Authorization": f"Bearer {self._access_token}"}
 
     def get_notebooks(self) -> list[dict]:
