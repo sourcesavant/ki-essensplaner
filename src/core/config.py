@@ -23,7 +23,7 @@ class AzureConfig:
     # Use "consumers" for personal Microsoft accounts, "common" for both, or tenant ID for org only
     TENANT_ID: str = os.getenv("AZURE_TENANT_ID", "consumers")
     AUTHORITY: str = f"https://login.microsoftonline.com/{TENANT_ID}"
-    SCOPES: list[str] = ["Notes.Read", "User.Read", "openid", "profile", "offline_access"]
+    SCOPES: list[str] = ["Notes.Read", "User.Read"]
     REDIRECT_URI: str = "http://localhost:8400"
 
     @classmethod
