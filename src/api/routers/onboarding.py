@@ -483,6 +483,9 @@ async def import_data(
             logger.exception(msg)
             print(msg, flush=True)
 
+    msg = "Scheduling background import task"
+    logger.info(msg)
+    print(msg, flush=True)
     # Fire-and-forget background task to avoid request timeouts
     asyncio.create_task(_run_import_bg())
 

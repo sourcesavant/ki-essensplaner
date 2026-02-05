@@ -19,6 +19,12 @@ mkdir -p "${DATA_DIR}"
 # Log startup
 bashio::log.info "Starting KI-Essensplaner API..."
 bashio::log.info "API will be available at port 8099"
+if [ -d "/app/app/.git" ]; then
+    COMMIT=$(git -C /app/app rev-parse --short HEAD 2>/dev/null || true)
+    if [ -n "${COMMIT}" ]; then
+        bashio::log.info "Running commit: ${COMMIT}"
+    fi
+fi
 
 if [ -z "${API_TOKEN}" ]; then
     bashio::log.warning "No API token configured. Protected endpoints will be unavailable."
