@@ -15,8 +15,10 @@ WORKDIR /app
 
 # Copy requirements and install (using venv to comply with PEP 668)
 COPY requirements.txt /app/
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_DEFAULT_TIMEOUT=120
 RUN python3 -m venv /app/venv && \
-    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+    /app/venv/bin/pip install --no-cache-dir --retries 5 -r requirements.txt
 
 # Copy application code
 COPY . /app/
