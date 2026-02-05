@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 import requests
+import asyncio
+import anyio
 
 from src.api.auth import verify_token
 from src.api.schemas.onboarding import (
@@ -424,7 +426,7 @@ def get_notebooks(_token: str = Depends(verify_token)) -> NotebooksResponse:
 
 
 @router.post("/import", response_model=ImportResponse)
-def import_data(
+async def import_data(
     request: ImportRequest,
     background_tasks: BackgroundTasks,
     _token: str = Depends(verify_token),
@@ -458,19 +460,31 @@ def import_data(
     logger.info(msg)
     print(msg, flush=True)
 
-    def _run_import_bg() -> None:
-        result = _import_from_notebooks_sync(request.notebook_ids, request.notebook_filter)
-        if "error" in result:
-            msg = f"Import failed: {result['error']}"
-            logger.error(msg)
-            print(msg, flush=True)
-            return
-        msg = f"Import completed: {result}"
+    async def _run_import_bg() -> None:
+        msg = f"Import background task started: notebook_ids={request.notebook_ids}"
         logger.info(msg)
         print(msg, flush=True)
+        try:
+            result = await anyio.to_thread.run_sync(
+                _import_from_notebooks_sync,
+                request.notebook_ids,
+                request.notebook_filter,
+            )
+            if "error" in result:
+                msg = f"Import failed: {result['error']}"
+                logger.error(msg)
+                print(msg, flush=True)
+                return
+            msg = f"Import completed: {result}"
+            logger.info(msg)
+            print(msg, flush=True)
+        except Exception as exc:
+            msg = f"Import failed (unexpected): {exc}"
+            logger.exception(msg)
+            print(msg, flush=True)
 
-    # Run import in background to avoid request timeouts
-    background_tasks.add_task(_run_import_bg)
+    # Fire-and-forget background task to avoid request timeouts
+    asyncio.create_task(_run_import_bg())
 
     return ImportResponse(
         message="Import started",
