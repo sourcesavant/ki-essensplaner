@@ -446,6 +446,45 @@ def import_meal_plans(
     print(f"\nImported {imported_count} meal plans.")
 
 
+def import_meal_plans_cached(
+    client: OneNoteClient,
+    notebooks_filter: list[str] | None = None,
+    export_raw: bool = False,
+) -> dict:
+    """Import meal plans using an already authenticated client (no interactive auth).
+
+    Returns a dict with pages_found and meal_plans_imported.
+    """
+    ensure_directories()
+    init_db()
+
+    pages = client.search_pages("", notebooks_filter)
+    if not pages:
+        return {"pages_found": 0, "meal_plans_imported": 0}
+
+    parser = MealPlanParser()
+    imported_count = 0
+
+    for page in pages:
+        page_id = page["id"]
+        try:
+            content = client.get_page_content(page_id)
+
+            if export_raw:
+                raw_path = RAW_DIR / f"{page_id}.html"
+                raw_path.write_text(content, encoding="utf-8")
+
+            meal_plan = parser.parse(content, page_id)
+            upsert_meal_plan(meal_plan)
+            imported_count += 1
+        except requests.HTTPError:
+            continue
+        except Exception:
+            continue
+
+    return {"pages_found": len(pages), "meal_plans_imported": imported_count}
+
+
 def export_page_content(page_id: str):
     """Export a specific page's content for debugging."""
     ensure_directories()

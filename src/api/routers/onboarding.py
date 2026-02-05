@@ -46,6 +46,9 @@ def _check_onenote_authenticated() -> tuple[bool, str | None]:
     try:
         logger.info("Checking OneNote authentication...")
         client = OneNoteClient()
+        if not client.try_authenticate_from_cache():
+            logger.info("No cached OneNote token available.")
+            return False, None
         logger.info("OneNoteClient created, attempting to get notebooks...")
         # Try to get notebooks - if this works, we're authenticated
         notebooks = client.get_notebooks()
@@ -80,6 +83,8 @@ def _import_from_notebooks_sync(notebook_ids: list[str], notebook_filter: list[s
     """
     try:
         client = OneNoteClient()
+        if not client.try_authenticate_from_cache():
+            return {"pages_found": 0, "recipes_imported": 0, "error": "OneNote not authenticated"}
 
         # Get all notebooks
         all_notebooks = client.get_notebooks()
@@ -97,30 +102,21 @@ def _import_from_notebooks_sync(notebook_ids: list[str], notebook_filter: list[s
             return {"pages_found": 0, "recipes_imported": 0, "error": "No matching notebooks found"}
 
         # Import from each notebook
-        from src.importers.onenote import import_meal_plans
+        from src.importers.onenote import import_meal_plans_cached
 
-        total_pages = 0
-        for notebook in notebooks_to_import:
-            pages = client.search_pages(notebooks_filter=[notebook["displayName"]])
-            total_pages += len(pages)
-
-            # Import meal plans from pages
-            for page in pages:
-                try:
-                    import_meal_plans(
-                        client,
-                        notebook_filters=[notebook["displayName"]],
-                        save_raw=True,
-                    )
-                except Exception as e:
-                    print(f"Error importing from page {page.get('title', 'unknown')}: {e}")
+        notebook_names = [nb["displayName"] for nb in notebooks_to_import]
+        import_result = import_meal_plans_cached(
+            client,
+            notebooks_filter=notebook_names,
+            export_raw=True,
+        )
 
         # Get recipe count
         with get_connection() as conn:
             recipe_count = conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
 
         return {
-            "pages_found": total_pages,
+            "pages_found": import_result.get("pages_found", 0),
             "recipes_imported": recipe_count,
         }
 
@@ -387,6 +383,11 @@ def get_notebooks(_token: str = Depends(verify_token)) -> NotebooksResponse:
 
     try:
         client = OneNoteClient()
+        if not client.try_authenticate_from_cache():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="OneNote not authenticated. Please authenticate via Home Assistant integration setup or POST /api/onboarding/onenote/auth/start",
+            )
         notebooks = client.get_notebooks()
 
         notebook_list = [
