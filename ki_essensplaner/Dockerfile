@@ -1,4 +1,5 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
+ARG BUILD_VERSION
 FROM $BUILD_FROM
 
 # Set shell
@@ -27,7 +28,8 @@ RUN python3 -m venv /app/venv && \
 # Fetch application code from repo root (avoid duplicated src in addon folder)
 ARG APP_REPO=https://github.com/sourcesavant/ki-essensplaner.git
 ARG APP_REF=master
-RUN git clone --depth 1 --branch ${APP_REF} ${APP_REPO} /app/app
+RUN echo "BUILD_VERSION=${BUILD_VERSION}" && \
+    git clone --depth 1 --branch ${APP_REF} ${APP_REPO} /app/app
 
 # Copy run script
 COPY run.sh /
