@@ -91,3 +91,7 @@ class MultiDayResponse(BaseModel):
     success: bool
     groups: list[MultiDayGroupResponse]
     affected_slots: list[str]
+
+
+MultiDayGroupResponse.model_rebuild()
+MultiDayResponse.model_rebuild()

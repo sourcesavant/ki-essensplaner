@@ -225,9 +225,9 @@ def delete_weekly_plan(_token: str = Depends(verify_token)) -> None:
 
 @router.post("/multi-day")
 def set_multi_day(
-    request: "SetMultiDayRequest",
+    request: SetMultiDayRequest,
     _token: str = Depends(verify_token),
-) -> "MultiDayResponse":
+) -> MultiDayResponse:
     """Configure a recipe for multiple days (meal prep).
 
     Allows setting up a primary slot where cooking happens, and reuse slots
@@ -312,7 +312,7 @@ def clear_multi_day(
 @router.get("/multi-day")
 def get_multi_day_groups(
     _token: str = Depends(verify_token),
-) -> list["MultiDayGroupResponse"]:
+) -> list[MultiDayGroupResponse]:
     """Get all multi-day meal prep groups.
 
     Returns information about all configured meal prep setups, including
