@@ -18,6 +18,8 @@ GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 # Token cache file path - use DATA_DIR if set (Home Assistant), otherwise home directory
 import os
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 _data_dir = os.environ.get("DATA_DIR")
 if _data_dir:
     TOKEN_CACHE_PATH = Path(_data_dir) / "token_cache.json"
@@ -46,6 +48,15 @@ class OneNoteClient:
             token_cache=self._token_cache,
         )
         self._access_token: str | None = None
+        self._timeout = int(os.getenv("GRAPH_TIMEOUT", "120"))
+        self._session = requests.Session()
+        retries = Retry(
+            total=5,
+            backoff_factor=1.0,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"],
+        )
+        self._session.mount("https://", HTTPAdapter(max_retries=retries))
 
     def _load_token_cache(self) -> None:
         """Load token cache from file."""
@@ -184,40 +195,40 @@ class OneNoteClient:
 
     def get_notebooks(self) -> list[dict]:
         """Get all notebooks."""
-        response = requests.get(
+        response = self._session.get(
             f"{GRAPH_API_BASE}/me/onenote/notebooks",
             headers=self._get_headers(),
-            timeout=30,
+            timeout=self._timeout,
         )
         response.raise_for_status()
         return response.json().get("value", [])
 
     def get_sections(self, notebook_id: str) -> list[dict]:
         """Get all sections in a notebook."""
-        response = requests.get(
+        response = self._session.get(
             f"{GRAPH_API_BASE}/me/onenote/notebooks/{notebook_id}/sections",
             headers=self._get_headers(),
-            timeout=30,
+            timeout=self._timeout,
         )
         response.raise_for_status()
         return response.json().get("value", [])
 
     def get_pages(self, section_id: str) -> list[dict]:
         """Get all pages in a section."""
-        response = requests.get(
+        response = self._session.get(
             f"{GRAPH_API_BASE}/me/onenote/sections/{section_id}/pages",
             headers=self._get_headers(),
-            timeout=30,
+            timeout=self._timeout,
         )
         response.raise_for_status()
         return response.json().get("value", [])
 
     def get_page_content(self, page_id: str) -> str:
         """Get the HTML content of a page."""
-        response = requests.get(
+        response = self._session.get(
             f"{GRAPH_API_BASE}/me/onenote/pages/{page_id}/content",
             headers=self._get_headers(),
-            timeout=30,
+            timeout=self._timeout,
         )
         response.raise_for_status()
         return response.text
