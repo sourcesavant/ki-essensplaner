@@ -81,6 +81,9 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "GET",
                     "/api/weekly-plan/multi-day/preferences",
                 ) or []
+                prefs = data.get("multi_day_preferences")
+                if isinstance(prefs, dict):
+                    data["multi_day_preferences"] = prefs.get("groups", [])
                 data["shopping_list"] = await self._fetch_cached_json(
                     session,
                     "shopping_list",

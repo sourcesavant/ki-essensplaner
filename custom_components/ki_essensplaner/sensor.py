@@ -607,9 +607,12 @@ class MultiDayPreferencesSensor(CoordinatorEntity[EssensplanerCoordinator], Sens
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return preference details."""
         groups = self.coordinator.data.get("multi_day_preferences", []) if self.coordinator.data else []
+        if isinstance(groups, dict):
+            groups = groups.get("groups", [])
         total_slots = 0
         for group in groups:
-            total_slots += 1 + len(group.get("reuse_slots", []))
+            if isinstance(group, dict):
+                total_slots += 1 + len(group.get("reuse_slots", []))
         return {
             "groups": groups,
             "total_slots": total_slots,
