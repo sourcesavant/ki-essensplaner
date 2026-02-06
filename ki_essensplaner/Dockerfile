@@ -5,19 +5,17 @@ FROM $BUILD_FROM
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install Python and dependencies
-RUN apk add --no-cache \
+# Install Python, Chromium, and dependencies (Debian base)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     python3 \
-    py3-pip \
-    py3-wheel \
+    python3-venv \
+    python3-pip \
     git \
     chromium \
-    nss \
-    libstdc++ \
-    libgcc \
-    freetype \
-    harfbuzz \
-    ttf-freefont
+    ca-certificates \
+    fonts-liberation && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app

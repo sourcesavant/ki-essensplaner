@@ -1,11 +1,15 @@
 name: "KI-Essensplaner"
 description: "KI-basierte Wochenplanung für Mahlzeiten mit Bioland-Integration"
 slug: "ki_essensplaner"
-version: "1.0.17"
+version: "1.0.18"
 arch:
   - amd64
   - aarch64
   - armv7
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base-debian:latest
+  aarch64: ghcr.io/home-assistant/aarch64-base-debian:latest
+  armv7: ghcr.io/home-assistant/armv7-base-debian:latest
 init: false
 startup: application
 boot: auto
