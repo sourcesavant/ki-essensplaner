@@ -45,6 +45,7 @@ async def async_setup_entry(
         # Multi-day meal prep sensor
         MultiDayOverviewSensor(coordinator, entry),
         MultiDayPreferencesSensor(coordinator, entry),
+        SkippedSlotsSensor(coordinator, entry),
 
         # Next meal sensor
         NextMealSensor(coordinator, entry),
@@ -617,6 +618,47 @@ class MultiDayPreferencesSensor(CoordinatorEntity[EssensplanerCoordinator], Sens
             "groups": groups,
             "total_slots": total_slots,
             "group_count": len(groups),
+        }
+
+
+class SkippedSlotsSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor showing skipped slots for plan generation."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Skipped Slots"
+    _attr_icon = "mdi:calendar-remove"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_skipped_slots"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+
+    @property
+    def native_value(self) -> str:
+        """Return number of skipped slots."""
+        skipped = self.coordinator.data.get("skipped_slots", []) if self.coordinator.data else []
+        if isinstance(skipped, dict):
+            skipped = skipped.get("slots", [])
+        if not skipped:
+            return "Keine Slots"
+        return f"{len(skipped)} Slots"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return skipped slot details."""
+        skipped = self.coordinator.data.get("skipped_slots", []) if self.coordinator.data else []
+        if isinstance(skipped, dict):
+            skipped = skipped.get("slots", [])
+        return {
+            "slots": skipped,
+            "count": len(skipped),
         }
 
 
