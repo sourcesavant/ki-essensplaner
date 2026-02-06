@@ -58,3 +58,26 @@ def health_check() -> HealthResponse:
         bioland_age_days=bioland_age_days,
         cached=status == "cached",
     )
+
+
+@router.get("/db-status")
+def db_status() -> dict:
+    """Return database counts useful for debugging."""
+    with get_connection() as conn:
+        recipes = conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
+        meals = conn.execute("SELECT COUNT(*) FROM meals").fetchone()[0]
+        linked_meals = conn.execute(
+            "SELECT COUNT(*) FROM meals WHERE recipe_id IS NOT NULL"
+        ).fetchone()[0]
+        meal_plans = conn.execute("SELECT COUNT(*) FROM meal_plans").fetchone()[0]
+        excluded = conn.execute("SELECT COUNT(*) FROM excluded_ingredients").fetchone()[0]
+        ratings = conn.execute("SELECT COUNT(*) FROM recipe_ratings").fetchone()[0]
+
+    return {
+        "recipes": recipes,
+        "meals": meals,
+        "linked_meals": linked_meals,
+        "meal_plans": meal_plans,
+        "excluded_ingredients": excluded,
+        "ratings": ratings,
+    }
