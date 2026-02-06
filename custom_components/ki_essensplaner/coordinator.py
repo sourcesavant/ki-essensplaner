@@ -404,6 +404,8 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         error_text = await response.text()
                         _LOGGER.error("Failed to select recipe: %s", error_text)
                         raise UpdateFailed(f"Failed to select recipe: {error_text}")
+            # Refresh coordinator data after selection so UI updates
+            await self.async_request_refresh()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error selecting recipe: %s", err)
             raise UpdateFailed(f"Error selecting recipe: {err}") from err
