@@ -2,11 +2,12 @@
 
 import json
 import sqlite3
+import shutil
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Generator
 
-from src.core.config import DB_PATH, ensure_directories
+from src.core.config import DB_PATH, PROJECT_ROOT, ensure_directories
 from src.models.meal_plan import DayOfWeek, Meal, MealCreate, MealPlan, MealPlanCreate, MealSlot
 from src.models.recipe import Recipe, RecipeCreate
 
@@ -105,6 +106,31 @@ def init_db() -> None:
     ensure_directories()
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+
+
+def migrate_db_if_needed() -> None:
+    """Migrate legacy DB from project data dir to DATA_DIR if target is empty."""
+    legacy_db = PROJECT_ROOT / "data" / "local" / "mealplanner.db"
+    target_db = DB_PATH
+
+    if not legacy_db.exists():
+        return
+
+    if target_db.exists():
+        try:
+            with sqlite3.connect(target_db) as conn:
+                conn.row_factory = sqlite3.Row
+                meals = conn.execute("SELECT COUNT(*) FROM meals").fetchone()[0]
+                recipes = conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0]
+                plans = conn.execute("SELECT COUNT(*) FROM meal_plans").fetchone()[0]
+                if meals > 0 or recipes > 0 or plans > 0:
+                    return
+        except Exception:
+            return
+
+    target_db.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy_db, target_db)
+    print(f"[DB] Migrated legacy DB from {legacy_db} to {target_db}")
 
 
 @contextmanager

@@ -6,12 +6,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.config import config
-from src.core.database import init_db
+from src.core.database import init_db, migrate_db_if_needed
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup."""
+    migrate_db_if_needed()
     init_db()
     yield
 from src.api.routers.bioland import router as bioland_router
