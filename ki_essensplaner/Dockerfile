@@ -1,6 +1,6 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
+ARG BUILD_ARCH
 ARG BUILD_VERSION
-FROM $BUILD_FROM
+FROM ghcr.io/home-assistant/${BUILD_ARCH}-base-debian:latest
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
