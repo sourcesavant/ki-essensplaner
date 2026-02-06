@@ -52,12 +52,52 @@ class WeeklyPlanCard extends HTMLElement {
 
   _setRecipeUrl(weekday, slot, recipeUrl) {
     const url = (recipeUrl || '').trim();
-    if (!url) return;
+    if (!url) return false;
     this._callService('set_recipe_url', {
       weekday: weekday,
       slot: slot,
       recipe_url: url
     });
+    return true;
+  }
+
+  _isValidUrl(value) {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  _setFeedback(container, message, isError = false) {
+    if (!container) return;
+    container.textContent = message;
+    container.classList.toggle('error', isError);
+    container.classList.toggle('success', !isError);
+    container.style.display = message ? 'block' : 'none';
+  }
+
+  _handleCustomUrlClick(buttonEl, weekday, slot) {
+    const inputEl = buttonEl?.previousElementSibling;
+    const feedbackEl = buttonEl?.nextElementSibling;
+    const value = (inputEl?.value || '').trim();
+
+    if (!value) {
+      this._setFeedback(feedbackEl, 'Bitte eine URL eingeben.', true);
+      return;
+    }
+    if (!this._isValidUrl(value)) {
+      this._setFeedback(feedbackEl, 'Ungueltige URL. Nur http/https.', true);
+      return;
+    }
+
+    const sent = this._setRecipeUrl(weekday, slot, value);
+    if (sent) {
+      this._setFeedback(feedbackEl, 'URL gesendet. Wird gescraped ...', false);
+      inputEl.value = '';
+      setTimeout(() => this._setFeedback(feedbackEl, ''), 3000);
+    }
   }
 
   _generatePlan() {
@@ -137,9 +177,10 @@ class WeeklyPlanCard extends HTMLElement {
       </select>
       <div class="custom-url">
         <input class="custom-url-input" type="url" placeholder="Rezept-Link einfuegen" />
-        <button class="custom-url-button" onclick="this.getRootNode().host._setRecipeUrl('${weekday}', '${slot}', this.previousElementSibling.value); this.previousElementSibling.value = '';">
+        <button class="custom-url-button" onclick="this.getRootNode().host._handleCustomUrlClick(this, '${weekday}', '${slot}')">
           Hinzufuegen
         </button>
+        <div class="custom-url-feedback" aria-live="polite"></div>
       </div>
     ` : '';
 
@@ -294,9 +335,11 @@ class WeeklyPlanCard extends HTMLElement {
           font-size: 12px;
         }
         .custom-url {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr auto;
           gap: 6px;
           margin-top: 6px;
+          align-items: center;
         }
         .custom-url-input {
           flex: 1;
@@ -318,6 +361,18 @@ class WeeklyPlanCard extends HTMLElement {
         }
         .custom-url-button:hover {
           opacity: 0.9;
+        }
+        .custom-url-feedback {
+          display: none;
+          grid-column: 1 / -1;
+          font-size: 11px;
+          color: var(--secondary-text-color);
+        }
+        .custom-url-feedback.success {
+          color: #2e7d32;
+        }
+        .custom-url-feedback.error {
+          color: #c62828;
         }
         .no-plan {
           text-align: center;
