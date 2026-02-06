@@ -27,6 +27,7 @@ from src.agents.models import (
     SlotGroup,
     SlotRecommendation,
     WeeklyRecommendation,
+    load_weekly_plan,
     save_weekly_plan,
 )
 from src.core.database import (
@@ -479,6 +480,22 @@ def _recipe_key(recipe: ScoredRecipe) -> tuple[str, str | int] | None:
     return None
 
 
+def _get_last_plan_recipe_keys(plan: WeeklyRecommendation | None) -> set[tuple[str, str | int]]:
+    """Collect recipe keys from a previous plan for exclusion."""
+    if not plan:
+        return set()
+
+    keys: set[tuple[str, str | int]] = set()
+    for slot in plan.slots:
+        recipe = plan.get_recipe_for_slot(slot.weekday, slot.slot)
+        if not recipe:
+            continue
+        key = _recipe_key(recipe)
+        if key is not None:
+            keys.add(key)
+    return keys
+
+
 def _build_multi_day_maps(
     preferences: list[dict] | None,
 ) -> tuple[dict[tuple[str, str], int], set[tuple[str, str]]]:
@@ -508,9 +525,11 @@ def _select_unique_recipes(
     recommendations: list[SlotRecommendation],
     group_id_by_slot: dict[tuple[str, str], int],
     planned_reuse_slots: set[tuple[str, str]],
+    banned_keys: set[tuple[str, str | int]] | None = None,
 ) -> None:
     """Pick unique default selections unless allowed by multi-day groups."""
     used_by_key: dict[tuple[str, str | int], list[tuple[str, str]]] = {}
+    banned_keys = banned_keys or set()
 
     for slot_rec in recommendations:
         slot_key = (slot_rec.weekday, slot_rec.slot)
@@ -520,13 +539,17 @@ def _select_unique_recipes(
             continue
 
         chosen_index = 0
+        found_allowed = False
         for idx, recipe in enumerate(slot_rec.recommendations):
             key = _recipe_key(recipe)
             if key is None:
                 continue
+            if key in banned_keys:
+                continue
 
             if key not in used_by_key:
                 chosen_index = idx
+                found_allowed = True
                 break
 
             current_group = group_id_by_slot.get(slot_key)
@@ -534,10 +557,11 @@ def _select_unique_recipes(
                 used_slots = used_by_key.get(key, [])
                 if used_slots and all(group_id_by_slot.get(s) == current_group for s in used_slots):
                     chosen_index = idx
+                    found_allowed = True
                     break
 
         slot_rec.selected_index = chosen_index
-        if slot_rec.recommendations:
+        if slot_rec.recommendations and found_allowed:
             chosen = slot_rec.recommendations[chosen_index]
             chosen_key = _recipe_key(chosen)
             if chosen_key is not None:
@@ -645,8 +669,15 @@ def run_search_agent(
         all_slots, favorites, new_recipes, context
     )
 
+    last_plan = load_weekly_plan()
+    banned_keys = _get_last_plan_recipe_keys(last_plan)
     group_id_by_slot, planned_reuse_slots = _build_multi_day_maps(multi_day_preferences)
-    _select_unique_recipes(slot_recommendations, group_id_by_slot, planned_reuse_slots)
+    _select_unique_recipes(
+        slot_recommendations,
+        group_id_by_slot,
+        planned_reuse_slots,
+        banned_keys=banned_keys,
+    )
 
     # Calculate stats
     favorites_count = sum(
