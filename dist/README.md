@@ -46,6 +46,10 @@ type: custom:weekly-plan-card
 entity: sensor.essensplaner_weekly_plan_status
 ```
 
+**Hinweis:** Die Card leitet den Slot-Entity-Prefix automatisch aus der `entity` ab
+(z.B. `sensor.ki_essensplaner_...`). Stelle sicher, dass du die richtige
+`weekly_plan_status`-Entity einträgst.
+
 **Features:**
 - 7 days × 2 slots (Mittagessen, Abendessen) grid
 - Color-coded by prep time (green ≤30min, orange ≤60min, red >60min)

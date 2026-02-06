@@ -25,6 +25,7 @@ class WeeklyPlanCard extends HTMLElement {
       throw new Error('Please define an entity (sensor.essensplaner_weekly_plan_status)');
     }
     this._config = config;
+    this._entityPrefix = this._deriveEntityPrefix(config.entity);
     this.render();
   }
 
@@ -71,7 +72,15 @@ class WeeklyPlanCard extends HTMLElement {
     const day = weekdayMap[weekday];
     const meal = slotMap[slot];
 
-    return `sensor.essensplaner_${day}_${meal}`;
+    return `${this._entityPrefix}${day}_${meal}`;
+  }
+
+  _deriveEntityPrefix(entityId) {
+    if (!entityId) return 'sensor.essensplaner_';
+    if (entityId.endsWith('_weekly_plan_status')) {
+      return entityId.slice(0, -'weekly_plan_status'.length);
+    }
+    return 'sensor.essensplaner_';
   }
 
   _getEffortColor(prepTime) {
