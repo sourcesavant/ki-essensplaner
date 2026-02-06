@@ -358,13 +358,25 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
         attrs = {
             "weekday": self._weekday,
             "slot": self._slot,
+            # Backward/forward compatible fields for UI cards
+            "recipe_title": selected_recipe.get("title"),
             "recipe_id": selected_recipe.get("recipe_id"),
             "recipe_url": selected_recipe.get("url"),
             "prep_time_minutes": selected_recipe.get("prep_time_minutes"),
             "calories": selected_recipe.get("calories"),
             "score": selected_recipe.get("score"),
             "is_new": selected_recipe.get("is_new"),
-            "alternatives": len(recommendations) - 1,
+            # Full recommendation list for dropdowns in Lovelace cards
+            "alternatives": [
+                {
+                    "title": r.get("title"),
+                    "is_new": r.get("is_new"),
+                    "url": r.get("url"),
+                    "recipe_id": r.get("recipe_id"),
+                }
+                for r in recommendations
+            ],
+            "alternatives_count": max(len(recommendations) - 1, 0),
             "selected_index": selected_index,
             "ingredients": selected_recipe.get("ingredients", []),
             # Multi-day attributes
