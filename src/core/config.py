@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
+_env_data_dir = os.getenv("DATA_DIR")
+DATA_DIR = Path(_env_data_dir) if _env_data_dir else PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 LOCAL_DIR = DATA_DIR / "local"
 DB_PATH = LOCAL_DIR / "mealplanner.db"
