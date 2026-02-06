@@ -184,13 +184,16 @@ class WeeklyPlanCard extends HTMLElement {
         }
         .week-grid {
           display: grid;
-          grid-template-columns: repeat(7, 1fr);
+          grid-template-columns: repeat(7, minmax(160px, 1fr));
           gap: 8px;
+          overflow-x: auto;
+          padding-bottom: 4px;
         }
         .day-column {
           display: flex;
           flex-direction: column;
           gap: 8px;
+          min-width: 160px;
         }
         .day-header {
           font-weight: 600;
