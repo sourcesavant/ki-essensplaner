@@ -250,6 +250,9 @@ def fetch_all_recipes(
     Returns:
         Dict with stats: {scraped, skipped, failed, linked_meals}
     """
+    import os
+    from src.core.config import DB_PATH
+    print(f"[RecipeFetch] Using DB: {DB_PATH} (DATA_DIR={os.getenv('DATA_DIR')})")
     stats = {"scraped": 0, "skipped": 0, "failed": 0, "linked_meals": 0}
 
     url_data = get_meal_urls()
