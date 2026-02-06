@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from src.agents.models import (
     WEEKDAYS,
     MEAL_SLOTS,
+    ScoredRecipe,
     WeeklyRecommendation,
     load_weekly_plan,
     save_weekly_plan,
@@ -23,6 +24,7 @@ from src.api.schemas.weekly_plan import (
     MultiDayPreferencesResponse,
     RecipeResponse,
     SelectRecipeRequest,
+    SelectRecipeUrlRequest,
     SetMultiDayRequest,
     SkipSlotsRequest,
     SkipSlotsResponse,
@@ -35,6 +37,8 @@ from src.core.user_config import (
     set_multi_day_preferences,
     set_skipped_slots,
 )
+from src.core.database import get_recipe_by_url, upsert_recipe
+from src.scrapers.recipe_fetcher import scrape_recipe
 
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
 
@@ -61,7 +65,12 @@ def _convert_to_response(plan: WeeklyRecommendation) -> WeeklyPlanResponse:
         # If reuse slot, show recipe from primary slot
         if slot.is_reuse_slot and slot.reuse_from:
             primary = plan.get_slot(*slot.reuse_from)
-            if primary and primary.recommendations:
+            if (
+                primary
+                and primary.recommendations
+                and primary.selected_index is not None
+                and 0 <= primary.selected_index < len(primary.recommendations)
+            ):
                 recommendations = [
                     RecipeResponse(
                         title=r.title,
@@ -203,7 +212,9 @@ def select_recipe(
         )
 
     # Validate recipe index
-    if not (0 <= request.recipe_index < len(slot_rec.recommendations)):
+    if request.recipe_index != -1 and not (
+        0 <= request.recipe_index < len(slot_rec.recommendations)
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Recipe index out of range (0-{len(slot_rec.recommendations) - 1})",
@@ -218,6 +229,101 @@ def select_recipe(
         )
 
     # Save updated plan
+    save_weekly_plan(plan)
+
+    return _convert_to_response(plan)
+
+
+@router.post("/select-url", response_model=WeeklyPlanResponse)
+def select_recipe_url(
+    request: SelectRecipeUrlRequest,
+    _token: str = Depends(verify_token),
+) -> WeeklyPlanResponse:
+    """Select a recipe by URL for a specific meal slot.
+
+    Scrapes the recipe URL, stores it in the DB, adds it to the slot
+    recommendations, and selects it.
+    """
+    plan = load_weekly_plan()
+
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No weekly plan found. Generate one first.",
+        )
+
+    if request.weekday not in WEEKDAYS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid weekday. Must be one of: {', '.join(WEEKDAYS)}",
+        )
+
+    if request.slot not in MEAL_SLOTS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid slot. Must be one of: {', '.join(MEAL_SLOTS)}",
+        )
+
+    slot_rec = plan.get_slot(request.weekday, request.slot)
+    if slot_rec is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Slot not found: {request.weekday} {request.slot}",
+        )
+
+    if slot_rec.is_reuse_slot:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot set a custom recipe for a reuse slot. Update the primary slot instead.",
+        )
+
+    recipe_url = request.recipe_url.strip()
+    if not recipe_url.startswith("http"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="recipe_url must be a valid URL starting with http/https",
+        )
+
+    # Check if the recipe is already in the slot recommendations
+    for idx, rec in enumerate(slot_rec.recommendations):
+        if rec.url == recipe_url:
+            slot_rec.selected_index = idx
+            save_weekly_plan(plan)
+            return _convert_to_response(plan)
+
+    # Use existing DB entry if present, otherwise scrape
+    recipe = get_recipe_by_url(recipe_url)
+    if recipe is None:
+        recipe_data = scrape_recipe(recipe_url)
+        if recipe_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Failed to scrape recipe from URL",
+            )
+        recipe = upsert_recipe(recipe_data)
+    else:
+        # If recipe already exists, prefer selecting existing recommendation by ID
+        for idx, rec in enumerate(slot_rec.recommendations):
+            if rec.recipe_id and recipe.id and rec.recipe_id == recipe.id:
+                slot_rec.selected_index = idx
+                save_weekly_plan(plan)
+                return _convert_to_response(plan)
+
+    custom_recipe = ScoredRecipe(
+        title=recipe.title,
+        url=recipe.source_url or recipe_url,
+        score=0.0,
+        reasoning="Manuell hinzugefuegt",
+        is_new=False,
+        recipe_id=recipe.id,
+        prep_time_minutes=recipe.prep_time_minutes,
+        calories=recipe.calories,
+        ingredients=recipe.ingredients,
+        servings=recipe.servings,
+    )
+
+    slot_rec.recommendations.append(custom_recipe)
+    slot_rec.selected_index = len(slot_rec.recommendations) - 1
     save_weekly_plan(plan)
 
     return _convert_to_response(plan)

@@ -328,8 +328,10 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
         recommendations = slot_data.get("recommendations", [])
         selected_index = slot_data.get("selected_index", 0)
 
+        if selected_index is None or selected_index < 0:
+            return "Kein Rezept"
         if not recommendations or selected_index >= len(recommendations):
-            return "Kein Plan"
+            return "Kein Rezept"
 
         selected_recipe = recommendations[selected_index]
         return selected_recipe.get("title", "Unbekannt")
@@ -347,25 +349,9 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
         recommendations = slot_data.get("recommendations", [])
         selected_index = slot_data.get("selected_index", 0)
 
-        if not recommendations or selected_index >= len(recommendations):
-            return {
-                "weekday": self._weekday,
-                "slot": self._slot,
-            }
-
-        selected_recipe = recommendations[selected_index]
-
         attrs = {
             "weekday": self._weekday,
             "slot": self._slot,
-            # Backward/forward compatible fields for UI cards
-            "recipe_title": selected_recipe.get("title"),
-            "recipe_id": selected_recipe.get("recipe_id"),
-            "recipe_url": selected_recipe.get("url"),
-            "prep_time_minutes": selected_recipe.get("prep_time_minutes"),
-            "calories": selected_recipe.get("calories"),
-            "score": selected_recipe.get("score"),
-            "is_new": selected_recipe.get("is_new"),
             # Full recommendation list for dropdowns in Lovelace cards
             "alternatives": [
                 {
@@ -378,11 +364,30 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
             ],
             "alternatives_count": max(len(recommendations) - 1, 0),
             "selected_index": selected_index,
-            "ingredients": selected_recipe.get("ingredients", []),
             # Multi-day attributes
             "is_reuse_slot": slot_data.get("is_reuse_slot", False),
             "prep_days": slot_data.get("prep_days", 1),
         }
+
+        if (
+            recommendations
+            and selected_index is not None
+            and 0 <= selected_index < len(recommendations)
+        ):
+            selected_recipe = recommendations[selected_index]
+            attrs.update(
+                {
+                    # Backward/forward compatible fields for UI cards
+                    "recipe_title": selected_recipe.get("title"),
+                    "recipe_id": selected_recipe.get("recipe_id"),
+                    "recipe_url": selected_recipe.get("url"),
+                    "prep_time_minutes": selected_recipe.get("prep_time_minutes"),
+                    "calories": selected_recipe.get("calories"),
+                    "score": selected_recipe.get("score"),
+                    "is_new": selected_recipe.get("is_new"),
+                    "ingredients": selected_recipe.get("ingredients", []),
+                }
+            )
 
         # Reuse info
         if slot_data.get("reuse_from"):
@@ -467,6 +472,8 @@ class NextMealSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
         recommendations = slot_data.get("recommendations", [])
         selected_index = slot_data.get("selected_index", 0)
 
+        if selected_index is None or selected_index < 0:
+            return "Keine Mahlzeit geplant"
         if not recommendations or selected_index >= len(recommendations):
             return "Keine Mahlzeit geplant"
 
@@ -492,6 +499,11 @@ class NextMealSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
         recommendations = slot_data.get("recommendations", [])
         selected_index = slot_data.get("selected_index", 0)
 
+        if selected_index is None or selected_index < 0:
+            return {
+                "next_weekday": weekday,
+                "next_slot": slot,
+            }
         if not recommendations or selected_index >= len(recommendations):
             return {
                 "next_weekday": weekday,

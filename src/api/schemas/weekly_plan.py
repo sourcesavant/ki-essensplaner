@@ -44,7 +44,15 @@ class SelectRecipeRequest(BaseModel):
 
     weekday: str = Field(..., description="German weekday name (Montag, Dienstag, ...)")
     slot: str = Field(..., description="Meal slot (Mittagessen, Abendessen)")
-    recipe_index: int = Field(..., ge=0, le=4, description="Recipe index (0-4)")
+    recipe_index: int = Field(..., ge=-1, le=4, description="Recipe index (0-4) or -1 for none")
+
+
+class SelectRecipeUrlRequest(BaseModel):
+    """Request to select a recipe by URL for a specific slot."""
+
+    weekday: str = Field(..., description="German weekday name (Montag, Dienstag, ...)")
+    slot: str = Field(..., description="Meal slot (Mittagessen, Abendessen)")
+    recipe_url: str = Field(..., description="Recipe URL to scrape and select")
 
 
 class GenerateWeeklyPlanResponse(BaseModel):

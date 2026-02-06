@@ -100,12 +100,17 @@ class SlotRecommendation:
         """Get the user-selected recipe (or None if reuse slot)."""
         if self.is_reuse_slot:
             return None  # Recipe comes from primary slot
+        if self.selected_index < 0:
+            return None
         if 0 <= self.selected_index < len(self.recommendations):
             return self.recommendations[self.selected_index]
         return self.top_recipe
 
     def select(self, index: int) -> bool:
         """Select a recipe by index. Returns True if valid selection."""
+        if index == -1:
+            self.selected_index = -1
+            return True
         if 0 <= index < len(self.recommendations):
             self.selected_index = index
             return True
@@ -114,6 +119,8 @@ class SlotRecommendation:
     def __str__(self) -> str:
         if self.is_reuse_slot:
             return f"{self.weekday} {self.slot}: [Vom {self.reuse_from[0]} {self.reuse_from[1]}]"
+        if self.selected_index < 0:
+            return f"{self.weekday} {self.slot}: Kein Rezept"
         selected = self.selected_recipe
         if selected:
             marker = "" if self.selected_index == 0 else f" [#{self.selected_index + 1}]"

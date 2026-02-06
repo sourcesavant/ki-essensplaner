@@ -127,7 +127,25 @@
         },
         "recipe_index": {
           "name": "Rezept-Index",
-          "description": "Index des alternativen Rezepts (0-4)"
+          "description": "Index des alternativen Rezepts (0-4) oder -1 fÃ¼r kein Rezept"
+        }
+      }
+    },
+    "set_recipe_url": {
+      "name": "Rezept-URL Setzen",
+      "description": "Setze eine benutzerdefinierte Rezept-URL fÃ¼r einen Mahlzeiten-Slot. Die URL wird gescraped und wie andere Rezepte verwendet.",
+      "fields": {
+        "weekday": {
+          "name": "Wochentag",
+          "description": "Deutscher Wochentagsname"
+        },
+        "slot": {
+          "name": "Mahlzeit",
+          "description": "Mahlzeiten-Slot (Mittagessen oder Abendessen)"
+        },
+        "recipe_url": {
+          "name": "Rezept-URL",
+          "description": "Rezept-URL zum Scrapen"
         }
       }
     },

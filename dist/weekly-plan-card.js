@@ -43,6 +43,16 @@ class WeeklyPlanCard extends HTMLElement {
     });
   }
 
+  _setRecipeUrl(weekday, slot, recipeUrl) {
+    const url = (recipeUrl || '').trim();
+    if (!url) return;
+    this._callService('set_recipe_url', {
+      weekday: weekday,
+      slot: slot,
+      recipe_url: url
+    });
+  }
+
   _generatePlan() {
     this._callService('generate_weekly_plan');
   }
@@ -103,20 +113,27 @@ class WeeklyPlanCard extends HTMLElement {
     const isNew = attributes.is_new || false;
     const isReuseSlot = attributes.is_reuse_slot || false;
     const alternatives = attributes.alternatives || [];
-    const selectedIndex = attributes.selected_index || 0;
+    const selectedIndex = Number.isInteger(attributes.selected_index) ? attributes.selected_index : 0;
 
     const effortColor = this._getEffortColor(prepTime);
     const newBadge = isNew ? '<span class="badge new">NEU</span>' : '';
     const reuseBadge = isReuseSlot ? '<span class="badge reuse">♻️ Reste</span>' : '';
 
-    const alternativesHtml = alternatives.length > 0 ? `
+    const alternativesHtml = !isReuseSlot ? `
       <select class="alternatives" onchange="this.getRootNode().host._selectRecipe('${weekday}', '${slot}', this.value)">
+        <option value="-1" ${selectedIndex === -1 ? 'selected' : ''}>Kein Rezept</option>
         ${alternatives.map((alt, index) => `
           <option value="${index}" ${index === selectedIndex ? 'selected' : ''}>
             ${alt.title}${alt.is_new ? ' 🆕' : ''}
           </option>
         `).join('')}
       </select>
+      <div class="custom-url">
+        <input class="custom-url-input" type="url" placeholder="Rezept-Link einfuegen" />
+        <button class="custom-url-button" onclick="this.getRootNode().host._setRecipeUrl('${weekday}', '${slot}', this.previousElementSibling.value); this.previousElementSibling.value = '';">
+          Hinzufuegen
+        </button>
+      </div>
     ` : '';
 
     return `
@@ -269,6 +286,32 @@ class WeeklyPlanCard extends HTMLElement {
           color: var(--primary-text-color);
           font-size: 12px;
         }
+        .custom-url {
+          display: flex;
+          gap: 6px;
+          margin-top: 6px;
+        }
+        .custom-url-input {
+          flex: 1;
+          padding: 4px 6px;
+          border: 1px solid var(--divider-color);
+          border-radius: 4px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-size: 12px;
+        }
+        .custom-url-button {
+          padding: 4px 8px;
+          border: none;
+          border-radius: 4px;
+          background: var(--primary-color);
+          color: white;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .custom-url-button:hover {
+          opacity: 0.9;
+        }
         .no-plan {
           text-align: center;
           padding: 40px;
@@ -332,3 +375,7 @@ console.info(
   'color: white; background: #4caf50; font-weight: 700;',
   'color: #4caf50; background: white; font-weight: 700;'
 );
+
+
+
+

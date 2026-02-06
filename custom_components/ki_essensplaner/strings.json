@@ -128,7 +128,25 @@
         },
         "recipe_index": {
           "name": "Recipe Index",
-          "description": "Index of the alternative recipe (0-4)"
+          "description": "Index of the alternative recipe (0-4) or -1 for none"
+        }
+      }
+    },
+    "set_recipe_url": {
+      "name": "Set Recipe URL",
+      "description": "Set a custom recipe URL for a specific meal slot. The URL will be scraped and used like other recipes.",
+      "fields": {
+        "weekday": {
+          "name": "Weekday",
+          "description": "German weekday name"
+        },
+        "slot": {
+          "name": "Meal Slot",
+          "description": "Meal slot (Mittagessen or Abendessen)"
+        },
+        "recipe_url": {
+          "name": "Recipe URL",
+          "description": "Recipe URL to scrape"
         }
       }
     },

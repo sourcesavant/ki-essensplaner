@@ -29,7 +29,13 @@ REMOVE_EXCLUSION_SCHEMA = vol.Schema({
 SELECT_RECIPE_SCHEMA = vol.Schema({
     vol.Required("weekday"): cv.string,
     vol.Required("slot"): cv.string,
-    vol.Required("recipe_index"): vol.All(vol.Coerce(int), vol.Range(min=0, max=4)),
+    vol.Required("recipe_index"): vol.All(vol.Coerce(int), vol.Range(min=-1, max=4)),
+})
+
+SET_RECIPE_URL_SCHEMA = vol.Schema({
+    vol.Required("weekday"): cv.string,
+    vol.Required("slot"): cv.string,
+    vol.Required("recipe_url"): cv.string,
 })
 
 SET_HOUSEHOLD_SIZE_SCHEMA = vol.Schema({
@@ -175,6 +181,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 "weekday": weekday,
                 "slot": slot,
                 "recipe_index": recipe_index,
+            },
+        )
+
+    async def handle_set_recipe_url(call: ServiceCall) -> None:
+        """Handle set_recipe_url service call."""
+        weekday = call.data["weekday"]
+        slot = call.data["slot"]
+        recipe_url = call.data["recipe_url"]
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.set_recipe_url(weekday, slot, recipe_url)
+
+        hass.bus.async_fire(
+            f"{DOMAIN}_plan_updated",
+            {
+                "message": f"Recipe URL set for {weekday} {slot}",
+                "weekday": weekday,
+                "slot": slot,
+                "recipe_url": recipe_url,
             },
         )
 
@@ -328,6 +353,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, "select_recipe", handle_select_recipe, schema=SELECT_RECIPE_SCHEMA
     )
     hass.services.async_register(
+        DOMAIN, "set_recipe_url", handle_set_recipe_url, schema=SET_RECIPE_URL_SCHEMA
+    )
+    hass.services.async_register(
         DOMAIN, "delete_weekly_plan", handle_delete_weekly_plan
     )
     hass.services.async_register(
@@ -381,6 +409,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "refresh_profile")
             hass.services.async_remove(DOMAIN, "generate_weekly_plan")
             hass.services.async_remove(DOMAIN, "select_recipe")
+            hass.services.async_remove(DOMAIN, "set_recipe_url")
             hass.services.async_remove(DOMAIN, "delete_weekly_plan")
             hass.services.async_remove(DOMAIN, "set_household_size")
             hass.services.async_remove(DOMAIN, "set_multi_day")

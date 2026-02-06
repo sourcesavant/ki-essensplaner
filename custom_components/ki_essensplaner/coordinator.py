@@ -386,7 +386,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Args:
             weekday: German weekday name (Montag, Dienstag, ...)
             slot: Meal slot (Mittagessen, Abendessen)
-            recipe_index: Recipe index (0-4)
+            recipe_index: Recipe index (0-4) or -1 for none
         """
         try:
             async with aiohttp.ClientSession() as session:
@@ -409,6 +409,35 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except aiohttp.ClientError as err:
             _LOGGER.error("Error selecting recipe: %s", err)
             raise UpdateFailed(f"Error selecting recipe: {err}") from err
+
+    async def set_recipe_url(self, weekday: str, slot: str, recipe_url: str) -> None:
+        """Set a recipe URL for a specific meal slot.
+
+        Args:
+            weekday: German weekday name (Montag, Dienstag, ...)
+            slot: Meal slot (Mittagessen, Abendessen)
+            recipe_url: URL to scrape and select
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/weekly-plan/select-url",
+                    headers=self._get_headers(),
+                    json={
+                        "weekday": weekday,
+                        "slot": slot,
+                        "recipe_url": recipe_url,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set recipe URL: %s", error_text)
+                        raise UpdateFailed(f"Failed to set recipe URL: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting recipe URL: %s", err)
+            raise UpdateFailed(f"Error setting recipe URL: {err}") from err
 
     async def delete_weekly_plan(self) -> None:
         """Delete the current weekly plan via API."""

@@ -76,6 +76,7 @@ Nach der Registrierung:
 | `/api/weekly-plan` | GET | Ja | Aktuellen Wochenplan abrufen |
 | `/api/weekly-plan/generate` | POST | Ja | Neuen Wochenplan generieren (async, ~30-120 Sek.) |
 | `/api/weekly-plan/select` | POST | Ja | Rezept für einen Slot auswählen |
+| `/api/weekly-plan/select-url` | POST | Ja | Rezept-URL für einen Slot scrapen und auswählen |
 | `/api/weekly-plan` | DELETE | Ja | Wochenplan löschen |
 
 ### Einkaufsliste
@@ -138,6 +139,14 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"weekday":"Montag","slot":"Abendessen","recipe_index":1}' \
   http://homeassistant.local:8099/api/weekly-plan/select
+```
+
+### Rezept-URL für Slot setzen
+```bash
+curl -X POST -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"weekday":"Montag","slot":"Abendessen","recipe_url":"https://example.com/rezept"}' \
+  http://homeassistant.local:8099/api/weekly-plan/select-url
 ```
 
 ### Einkaufsliste nach Store aufgeteilt
@@ -270,7 +279,17 @@ service: ki_essensplaner.select_recipe
 data:
   weekday: "Montag"
   slot: "Abendessen"
-  recipe_index: 2  # Alternative auswählen (0-4)
+  recipe_index: 2  # Alternative auswählen (0-4), -1 = kein Rezept
+```
+
+**`ki_essensplaner.set_recipe_url`**:
+Setze eine Rezept-URL für einen Mahlzeiten-Slot (wird gescraped)
+```yaml
+service: ki_essensplaner.set_recipe_url
+data:
+  weekday: "Montag"
+  slot: "Abendessen"
+  recipe_url: "https://example.com/rezept"
 ```
 
 **`ki_essensplaner.delete_weekly_plan`**:
