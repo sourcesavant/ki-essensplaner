@@ -10,7 +10,14 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     py3-wheel \
-    git
+    git \
+    chromium \
+    nss \
+    libstdc++ \
+    libgcc \
+    freetype \
+    harfbuzz \
+    ttf-freefont
 
 # Set working directory
 WORKDIR /app
@@ -22,6 +29,9 @@ ENV PIP_DEFAULT_TIMEOUT=120
 ENV PIP_CONFIG_FILE=/dev/null
 ENV PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_EXTRA_INDEX_URL=
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_BROWSERS_PATH=0
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --isolated --no-cache-dir --index-url https://pypi.org/simple --timeout 300 --retries 10 -r requirements.txt
 
