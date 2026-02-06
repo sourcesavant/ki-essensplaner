@@ -119,6 +119,24 @@ class MultiDayPreferencesResponse(BaseModel):
 
     groups: list[MultiDayPreferenceGroup]
 
+class SkipSlot(BaseModel):
+    """A single slot to skip."""
+
+    weekday: str
+    slot: str
+
+
+class SkipSlotsRequest(BaseModel):
+    """Request to set skipped slots."""
+
+    slots: list[SkipSlot]
+
+
+class SkipSlotsResponse(BaseModel):
+    """Response for skipped slots."""
+
+    slots: list[SkipSlot]
+
 
 MultiDayGroupResponse.model_rebuild()
 MultiDayResponse.model_rebuild()

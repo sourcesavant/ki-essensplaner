@@ -24,10 +24,17 @@ from src.api.schemas.weekly_plan import (
     RecipeResponse,
     SelectRecipeRequest,
     SetMultiDayRequest,
+    SkipSlotsRequest,
+    SkipSlotsResponse,
     SlotResponse,
     WeeklyPlanResponse,
 )
-from src.core.user_config import get_multi_day_preferences, set_multi_day_preferences
+from src.core.user_config import (
+    get_multi_day_preferences,
+    get_skipped_slots,
+    set_multi_day_preferences,
+    set_skipped_slots,
+)
 
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
 
@@ -100,7 +107,11 @@ def _generate_plan_sync() -> None:
     try:
         print("[API] Starting weekly plan generation...")
         preferences = get_multi_day_preferences()
-        plan = run_search_agent(multi_day_preferences=preferences)
+        skipped = get_skipped_slots()
+        plan = run_search_agent(
+            multi_day_preferences=preferences,
+            skipped_slots=skipped,
+        )
         save_weekly_plan(plan)
         print(f"[API] Weekly plan generated successfully: {len(plan.slots)} slots")
     except Exception as e:
@@ -445,3 +456,58 @@ def clear_multi_day_preferences_endpoint(
     """Clear all stored multi-day preferences."""
     set_multi_day_preferences([])
     return {"success": True, "message": "Multi-day preferences cleared"}
+
+
+def _validate_skipped_slots(slots: list[dict]) -> list[dict]:
+    """Validate and normalize skipped slots."""
+    seen: set[tuple[str, str]] = set()
+    normalized: list[dict] = []
+
+    for slot in slots:
+        weekday = slot.get("weekday")
+        meal_slot = slot.get("slot")
+        if weekday not in WEEKDAYS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid weekday: {weekday}",
+            )
+        if meal_slot not in MEAL_SLOTS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid slot: {meal_slot}",
+            )
+        key = (weekday, meal_slot)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({"weekday": weekday, "slot": meal_slot})
+
+    return normalized
+
+
+@router.get("/skip-slots", response_model=SkipSlotsResponse)
+def get_skip_slots_endpoint(
+    _token: str = Depends(verify_token),
+) -> SkipSlotsResponse:
+    """Get stored skipped slots for plan generation."""
+    return SkipSlotsResponse(slots=get_skipped_slots())
+
+
+@router.put("/skip-slots", response_model=SkipSlotsResponse)
+def set_skip_slots_endpoint(
+    request: SkipSlotsRequest,
+    _token: str = Depends(verify_token),
+) -> SkipSlotsResponse:
+    """Set skipped slots to be applied before plan generation."""
+    normalized = _validate_skipped_slots([s.model_dump() for s in request.slots])
+    set_skipped_slots(normalized)
+    return SkipSlotsResponse(slots=normalized)
+
+
+@router.delete("/skip-slots")
+def clear_skip_slots_endpoint(
+    _token: str = Depends(verify_token),
+) -> dict:
+    """Clear all stored skipped slots."""
+    set_skipped_slots([])
+    return {"success": True, "message": "Skipped slots cleared"}

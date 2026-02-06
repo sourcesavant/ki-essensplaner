@@ -53,6 +53,16 @@ SET_MULTI_DAY_PREFERENCES_SCHEMA = vol.Schema({
     vol.Required("reuse_days"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
 })
 
+SET_SKIP_SLOT_SCHEMA = vol.Schema({
+    vol.Required("weekday"): cv.string,
+    vol.Required("slot"): cv.string,
+})
+
+CLEAR_SKIP_SLOTS_SCHEMA = vol.Schema({
+    vol.Optional("weekday"): cv.string,
+    vol.Optional("slot"): cv.string,
+})
+
 CLEAR_MULTI_DAY_SCHEMA = vol.Schema({
     vol.Required("weekday"): cv.string,
     vol.Required("slot"): cv.string,
@@ -253,6 +263,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ]
         await coordinator.set_multi_day_preferences(updated)
 
+    async def handle_set_skip_slot(call: ServiceCall) -> None:
+        """Handle set_skip_slot service call."""
+        weekday = call.data["weekday"]
+        slot = call.data["slot"]
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        existing = coordinator.data.get("skipped_slots", []) if coordinator.data else []
+        updated = [
+            s for s in existing
+            if not (s.get("weekday") == weekday and s.get("slot") == slot)
+        ]
+        updated.append({"weekday": weekday, "slot": slot})
+        await coordinator.set_skipped_slots(updated)
+
+    async def handle_clear_skip_slots(call: ServiceCall) -> None:
+        """Handle clear_skip_slots service call."""
+        weekday = call.data.get("weekday")
+        slot = call.data.get("slot")
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        if not weekday or not slot:
+            await coordinator.set_skipped_slots([])
+            return
+
+        existing = coordinator.data.get("skipped_slots", []) if coordinator.data else []
+        updated = [
+            s for s in existing
+            if not (s.get("weekday") == weekday and s.get("slot") == slot)
+        ]
+        await coordinator.set_skipped_slots(updated)
+
     async def handle_clear_multi_day(call: ServiceCall) -> None:
         """Handle clear_multi_day service call."""
         weekday = call.data["weekday"]
@@ -308,6 +349,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=CLEAR_MULTI_DAY_PREFERENCES_SCHEMA,
     )
     hass.services.async_register(
+        DOMAIN,
+        "set_skip_slot",
+        handle_set_skip_slot,
+        schema=SET_SKIP_SLOT_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "clear_skip_slots",
+        handle_clear_skip_slots,
+        schema=CLEAR_SKIP_SLOTS_SCHEMA,
+    )
+    hass.services.async_register(
         DOMAIN, "clear_multi_day", handle_clear_multi_day, schema=CLEAR_MULTI_DAY_SCHEMA
     )
     hass.services.async_register(
@@ -334,6 +387,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "clear_multi_day")
             hass.services.async_remove(DOMAIN, "set_multi_day_preferences")
             hass.services.async_remove(DOMAIN, "clear_multi_day_preferences")
+            hass.services.async_remove(DOMAIN, "set_skip_slot")
+            hass.services.async_remove(DOMAIN, "clear_skip_slots")
             hass.services.async_remove(DOMAIN, "fetch_recipes")
 
     return unload_ok

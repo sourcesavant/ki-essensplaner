@@ -84,6 +84,15 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 prefs = data.get("multi_day_preferences")
                 if isinstance(prefs, dict):
                     data["multi_day_preferences"] = prefs.get("groups", [])
+                data["skipped_slots"] = await self._fetch_cached_json(
+                    session,
+                    "skipped_slots",
+                    "GET",
+                    "/api/weekly-plan/skip-slots",
+                ) or []
+                skipped = data.get("skipped_slots")
+                if isinstance(skipped, dict):
+                    data["skipped_slots"] = skipped.get("slots", [])
                 data["shopping_list"] = await self._fetch_cached_json(
                     session,
                     "shopping_list",
@@ -568,6 +577,25 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except aiohttp.ClientError as err:
             _LOGGER.error("Error setting multi-day preferences: %s", err)
             raise UpdateFailed(f"Error setting multi-day preferences: {err}") from err
+
+    async def set_skipped_slots(self, slots: list[dict]) -> None:
+        """Set skipped slots for plan generation."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    f"{self.api_url}/api/weekly-plan/skip-slots",
+                    headers=self._get_headers(),
+                    json={"slots": slots},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set skipped slots: %s", error_text)
+                        raise UpdateFailed(f"Failed to set skipped slots: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting skipped slots: %s", err)
+            raise UpdateFailed(f"Error setting skipped slots: {err}") from err
 
     async def fetch_recipes(self, delay_seconds: float = 0.5) -> None:
         """Trigger background recipe fetch from meal URLs."""

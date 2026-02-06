@@ -84,6 +84,7 @@ def _get_favorites_from_db() -> list[tuple[Recipe, int]]:
 def _get_slot_groups_to_search(
     target_day: str | None,
     target_slot: str | None,
+    skipped_slots: set[tuple[str, str]] | None = None,
 ) -> dict[SlotGroup, list[tuple[str, str]]]:
     """Determine which slot groups need to be searched.
 
@@ -101,6 +102,8 @@ def _get_slot_groups_to_search(
             continue
         for slot in MEAL_SLOTS:
             if target_slot and slot != target_slot:
+                continue
+            if skipped_slots and (weekday, slot) in skipped_slots:
                 continue
             group = SLOT_GROUP_MAPPING.get((weekday, slot), SlotGroup.NORMAL)
             groups[group].append((weekday, slot))
@@ -546,6 +549,7 @@ def run_search_agent(
     target_slot: str | None = None,
     *,
     multi_day_preferences: list[dict] | None = None,
+    skipped_slots: list[dict] | None = None,
 ) -> WeeklyRecommendation:
     """Run the recipe search agent.
 
@@ -599,7 +603,15 @@ def run_search_agent(
 
     # Determine slots to search
     print("\n5. Determining slots...")
-    groups = _get_slot_groups_to_search(target_day, target_slot)
+    skipped_set: set[tuple[str, str]] = set()
+    if skipped_slots:
+        for slot in skipped_slots:
+            weekday = slot.get("weekday")
+            meal_slot = slot.get("slot")
+            if weekday and meal_slot:
+                skipped_set.add((weekday, meal_slot))
+
+    groups = _get_slot_groups_to_search(target_day, target_slot, skipped_set)
     all_slots = [(day, slot) for slots in groups.values() for day, slot in slots]
     print(f"   {len(all_slots)} slots to fill")
 

@@ -84,6 +84,29 @@ def set_multi_day_preferences(groups: list[dict]) -> None:
     save_config(config)
 
 
+def get_skipped_slots() -> list[dict]:
+    """Get stored skipped slots for plan generation.
+
+    Returns:
+        List of slots to skip (may be empty)
+    """
+    skipped = load_config().get("skipped_slots", [])
+    if isinstance(skipped, list):
+        return skipped
+    return []
+
+
+def set_skipped_slots(slots: list[dict]) -> None:
+    """Set skipped slots for plan generation.
+
+    Args:
+        slots: List of {"weekday": "...", "slot": "..."} dicts
+    """
+    config = load_config()
+    config["skipped_slots"] = slots
+    save_config(config)
+
+
 def set_household_size(size: int) -> None:
     """Set household size (1-10 persons).
 

@@ -256,6 +256,66 @@ clear_multi_day_preferences:
             - "Mittagessen"
             - "Abendessen"
 
+set_skip_slot:
+  name: Skip Slot
+  description: Mark a specific weekday/slot to be skipped during plan generation.
+  fields:
+    weekday:
+      name: Weekday
+      description: German weekday name
+      required: true
+      example: "Dienstag"
+      selector:
+        select:
+          options:
+            - "Montag"
+            - "Dienstag"
+            - "Mittwoch"
+            - "Donnerstag"
+            - "Freitag"
+            - "Samstag"
+            - "Sonntag"
+    slot:
+      name: Meal Slot
+      description: Meal slot (Mittagessen or Abendessen)
+      required: true
+      example: "Abendessen"
+      selector:
+        select:
+          options:
+            - "Mittagessen"
+            - "Abendessen"
+
+clear_skip_slots:
+  name: Clear Skipped Slots
+  description: Remove skipped slots (all or a specific one).
+  fields:
+    weekday:
+      name: Weekday
+      description: Optional. If set with slot, only this slot is cleared.
+      required: false
+      example: "Dienstag"
+      selector:
+        select:
+          options:
+            - "Montag"
+            - "Dienstag"
+            - "Mittwoch"
+            - "Donnerstag"
+            - "Freitag"
+            - "Samstag"
+            - "Sonntag"
+    slot:
+      name: Meal Slot
+      description: Optional. If set with weekday, only this slot is cleared.
+      required: false
+      example: "Abendessen"
+      selector:
+        select:
+          options:
+            - "Mittagessen"
+            - "Abendessen"
+
 fetch_recipes:
   name: Fetch Recipes
   description: Fetch and scrape recipes for all meal URLs that are not yet linked to a recipe.
