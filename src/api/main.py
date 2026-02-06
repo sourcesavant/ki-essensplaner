@@ -59,6 +59,7 @@ else:
 app.include_router(health_router)
 app.include_router(profile_router)
 app.include_router(config_router)
+app.include_router(config_router, prefix="/api")
 app.include_router(bioland_router)
 app.include_router(seasonality_router)
 app.include_router(weekly_plan_router)
