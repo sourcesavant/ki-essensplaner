@@ -34,6 +34,7 @@ class WeeklyPlanResponse(BaseModel):
 
     generated_at: str
     week_start: str
+    completed_at: str | None = None
     favorites_count: int
     new_count: int
     slots: list[SlotResponse] = Field(default_factory=list)
@@ -60,6 +61,25 @@ class GenerateWeeklyPlanResponse(BaseModel):
 
     message: str
     task_id: str | None = None
+
+
+class CompleteWeeklyPlanRequest(BaseModel):
+    """Request to complete the current weekly plan."""
+
+    generate_next: bool = True
+    week_start: str | None = None
+
+
+class CompleteWeeklyPlanResponse(BaseModel):
+    """Response after completing a weekly plan."""
+
+    success: bool
+    message: str
+    week_start: str | None = None
+    meals_written: int = 0
+    skipped_slots: int = 0
+    completed_at: str | None = None
+    generated_next: bool = False
 
 
 class SetMultiDayRequest(BaseModel):

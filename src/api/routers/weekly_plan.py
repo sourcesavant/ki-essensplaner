@@ -17,6 +17,8 @@ from src.agents.models import (
 from src.agents.recipe_search_agent import run_search_agent
 from src.api.auth import verify_token
 from src.api.schemas.weekly_plan import (
+    CompleteWeeklyPlanRequest,
+    CompleteWeeklyPlanResponse,
     GenerateWeeklyPlanResponse,
     MultiDayGroupResponse,
     MultiDayResponse,
@@ -37,7 +39,8 @@ from src.core.user_config import (
     set_multi_day_preferences,
     set_skipped_slots,
 )
-from src.core.database import get_recipe_by_url, upsert_recipe
+from src.core.database import get_recipe_by_url, upsert_meal_plan, upsert_recipe
+from src.models.meal_plan import DayOfWeek, MealCreate, MealPlanCreate, MealSlot
 from src.scrapers.recipe_fetcher import scrape_recipe
 
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
@@ -105,10 +108,72 @@ def _convert_to_response(plan: WeeklyRecommendation) -> WeeklyPlanResponse:
     return WeeklyPlanResponse(
         generated_at=plan.generated_at,
         week_start=plan.week_start,
+        completed_at=plan.completed_at,
         favorites_count=plan.favorites_count,
         new_count=plan.new_count,
         slots=slots,
     )
+
+
+def _map_weekday(weekday: str) -> DayOfWeek | None:
+    mapping = {
+        "Montag": DayOfWeek.MONDAY,
+        "Dienstag": DayOfWeek.TUESDAY,
+        "Mittwoch": DayOfWeek.WEDNESDAY,
+        "Donnerstag": DayOfWeek.THURSDAY,
+        "Freitag": DayOfWeek.FRIDAY,
+        "Samstag": DayOfWeek.SATURDAY,
+        "Sonntag": DayOfWeek.SUNDAY,
+    }
+    return mapping.get(weekday)
+
+
+def _map_slot(slot: str) -> MealSlot | None:
+    mapping = {
+        "Mittagessen": MealSlot.LUNCH,
+        "Abendessen": MealSlot.DINNER,
+    }
+    return mapping.get(slot)
+
+
+def _build_meal_plan(plan: WeeklyRecommendation) -> tuple[MealPlanCreate, int, int]:
+    """Create a MealPlanCreate from selected primary slots in the weekly plan."""
+    meals: list[MealCreate] = []
+    skipped = 0
+
+    for slot in plan.slots:
+        if slot.is_reuse_slot:
+            skipped += 1
+            continue
+        recipe = slot.selected_recipe
+        if recipe is None:
+            skipped += 1
+            continue
+        day_of_week = _map_weekday(slot.weekday)
+        meal_slot = _map_slot(slot.slot)
+        if day_of_week is None or meal_slot is None:
+            skipped += 1
+            continue
+
+        meals.append(
+            MealCreate(
+                day_of_week=day_of_week,
+                slot=meal_slot,
+                recipe_id=recipe.recipe_id,
+                recipe_title=None if recipe.recipe_id else recipe.title,
+            )
+        )
+
+    plan_id = f"ha-week-{plan.week_start}"
+    meal_plan = MealPlanCreate(
+        onenote_page_id=plan_id,
+        week_start=datetime.fromisoformat(plan.week_start).date()
+        if plan.week_start
+        else None,
+        raw_content=None,
+        meals=meals,
+    )
+    return meal_plan, len(meals), skipped
 
 
 def _generate_plan_sync() -> None:
@@ -169,6 +234,63 @@ def generate_weekly_plan(
     return GenerateWeeklyPlanResponse(
         message="Weekly plan generation started. This may take 30-120 seconds. Poll GET /api/weekly-plan to check status.",
         task_id=None,  # Simple implementation without task tracking
+    )
+
+
+@router.post("/complete", response_model=CompleteWeeklyPlanResponse)
+def complete_weekly_plan(
+    request: CompleteWeeklyPlanRequest,
+    background_tasks: BackgroundTasks,
+    _token: str = Depends(verify_token),
+) -> CompleteWeeklyPlanResponse:
+    """Mark the current weekly plan as completed and persist cooked meals.
+
+    No-op if no weekly plan exists.
+    """
+    plan = load_weekly_plan()
+    if plan is None:
+        return CompleteWeeklyPlanResponse(
+            success=False,
+            message="No weekly plan found. Nothing to complete.",
+            week_start=None,
+            meals_written=0,
+            skipped_slots=0,
+            completed_at=None,
+            generated_next=False,
+        )
+
+    if request.week_start and request.week_start != plan.week_start:
+        return CompleteWeeklyPlanResponse(
+            success=False,
+            message=(
+                "Weekly plan week_start does not match request. "
+                "No changes were made."
+            ),
+            week_start=plan.week_start,
+            meals_written=0,
+            skipped_slots=0,
+            completed_at=plan.completed_at,
+            generated_next=False,
+        )
+
+    meal_plan, meals_written, skipped = _build_meal_plan(plan)
+    upsert_meal_plan(meal_plan)
+
+    if not plan.completed_at:
+        plan.completed_at = datetime.now().isoformat()
+        save_weekly_plan(plan)
+
+    if request.generate_next:
+        background_tasks.add_task(_generate_plan_sync)
+
+    return CompleteWeeklyPlanResponse(
+        success=True,
+        message="Weekly plan completed and meals persisted.",
+        week_start=plan.week_start,
+        meals_written=meals_written,
+        skipped_slots=skipped,
+        completed_at=plan.completed_at,
+        generated_next=request.generate_next,
     )
 
 

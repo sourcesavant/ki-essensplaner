@@ -154,6 +154,7 @@ class WeeklyRecommendation:
 
     generated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     week_start: str = field(default_factory=lambda: _get_week_start().isoformat())
+    completed_at: str | None = None
     favorites_count: int = 0
     new_count: int = 0
     slots: list[SlotRecommendation] = field(default_factory=list)
@@ -332,6 +333,7 @@ class WeeklyRecommendation:
         return {
             "generated_at": self.generated_at,
             "week_start": self.week_start,
+            "completed_at": self.completed_at,
             "favorites_count": self.favorites_count,
             "new_count": self.new_count,
             "multi_day_groups": [
@@ -433,6 +435,7 @@ class WeeklyRecommendation:
         return cls(
             generated_at=data.get("generated_at", datetime.now().isoformat()),
             week_start=data.get("week_start", _get_week_start().isoformat()),
+            completed_at=data.get("completed_at"),
             favorites_count=data.get("favorites_count", 0),
             new_count=data.get("new_count", 0),
             slots=slots,

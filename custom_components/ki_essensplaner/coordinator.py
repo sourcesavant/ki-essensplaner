@@ -359,6 +359,25 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Error generating weekly plan: %s", err)
             raise UpdateFailed(f"Error generating weekly plan: {err}") from err
 
+    async def complete_week(self, generate_next: bool = True) -> None:
+        """Mark the current weekly plan as completed via API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/weekly-plan/complete",
+                    headers=self._get_headers(),
+                    json={"generate_next": generate_next},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to complete weekly plan: %s", error_text)
+                        raise UpdateFailed(f"Failed to complete weekly plan: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error completing weekly plan: %s", err)
+            raise UpdateFailed(f"Error completing weekly plan: {err}") from err
+
     async def get_weekly_plan(self) -> dict[str, Any] | None:
         """Get the current weekly plan from API."""
         try:

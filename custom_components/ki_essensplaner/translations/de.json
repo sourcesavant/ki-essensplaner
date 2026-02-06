@@ -153,6 +153,16 @@
       "name": "Wochenplan Löschen",
       "description": "Lösche den aktuellen Wochenplan."
     },
+    "complete_week": {
+      "name": "Woche Abschließen",
+      "description": "Markiere den aktuellen Wochenplan als abgeschlossen und speichere die gekochten Gerichte. Optional wird danach ein neuer Plan generiert.",
+      "fields": {
+        "generate_next": {
+          "name": "Neuen Plan Generieren",
+          "description": "Nach dem Abschluss automatisch einen neuen Wochenplan generieren"
+        }
+      }
+    },
     "fetch_recipes": {
       "name": "Rezepte Abrufen",
       "description": "Scrape Rezepte für alle Mahlzeiten-URLs, die noch keinem Rezept zugeordnet sind.",
@@ -165,3 +175,4 @@
     }
   }
 }
+

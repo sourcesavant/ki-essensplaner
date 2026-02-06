@@ -59,6 +59,9 @@ class OneNoteClient:
         )
         self._session.mount("https://", HTTPAdapter(max_retries=retries))
 
+        # Try to load token from cache automatically
+        self.try_authenticate_from_cache()
+
     def _load_token_cache(self) -> None:
         """Load token cache from file."""
         TOKEN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)

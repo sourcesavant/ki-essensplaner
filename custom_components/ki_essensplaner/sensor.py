@@ -264,6 +264,8 @@ class WeeklyPlanStatusSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
         plan = self.coordinator.data.get("weekly_plan") if self.coordinator.data else None
         if plan is None:
             return "no_plan"
+        if plan.get("completed_at"):
+            return "completed"
         return "active"
 
     @property
@@ -276,6 +278,7 @@ class WeeklyPlanStatusSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
         return {
             "week_start": plan.get("week_start"),
             "generated_at": plan.get("generated_at"),
+            "completed_at": plan.get("completed_at"),
             "favorites_count": plan.get("favorites_count", 0),
             "new_count": plan.get("new_count", 0),
             "total_slots": len(plan.get("slots", [])),

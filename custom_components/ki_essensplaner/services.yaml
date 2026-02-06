@@ -98,6 +98,18 @@ delete_weekly_plan:
   name: Delete Weekly Plan
   description: Delete the current weekly plan. This removes all meal recommendations.
 
+complete_week:
+  name: Complete Week
+  description: Mark the current weekly plan as completed and persist cooked meals. Optionally generate a new plan afterwards.
+  fields:
+    generate_next:
+      name: Generate Next Plan
+      description: Automatically generate a new weekly plan after completion
+      required: false
+      example: true
+      selector:
+        boolean:
+
 set_household_size:
   name: Set Household Size
   description: Set the number of people in the household. Recipe quantities in shopping lists are automatically scaled based on this setting.

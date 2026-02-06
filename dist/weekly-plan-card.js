@@ -11,6 +11,8 @@ class WeeklyPlanCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._hass = null;
     this._config = null;
+    this._isGenerating = false;
+    this._lastGeneratedAt = null;
   }
 
   setConfig(config) {
@@ -94,7 +96,28 @@ class WeeklyPlanCard extends HTMLElement {
   }
 
   _generatePlan() {
+    const planStatus = this._hass?.states?.[this._config?.entity];
+    this._lastGeneratedAt = planStatus?.attributes?.generated_at || null;
+    this._isGenerating = true;
     this._callService('generate_weekly_plan');
+  }
+
+  _completeWeek(generateNext = true) {
+    if (generateNext) {
+      const planStatus = this._hass?.states?.[this._config?.entity];
+      this._lastGeneratedAt = planStatus?.attributes?.generated_at || null;
+      this._isGenerating = true;
+    }
+    this._callService('complete_week', {
+      generate_next: generateNext
+    });
+  }
+
+  _formatDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('de-DE');
   }
 
   _getSlotEntity(weekday, slot) {
@@ -204,7 +227,20 @@ class WeeklyPlanCard extends HTMLElement {
     const slots = ['Mittagessen', 'Abendessen'];
 
     const planStatus = this._hass.states[this._config.entity];
-    const hasPlan = planStatus && planStatus.state === 'active';
+    const hasPlan = planStatus && planStatus.state !== 'no_plan';
+    const completedAt = planStatus?.attributes?.completed_at;
+    const isCompleted = Boolean(completedAt);
+    const completedLabel = completedAt ? this._formatDate(completedAt) : '';
+    const generatedAt = planStatus?.attributes?.generated_at || null;
+
+    if (this._isGenerating && this._lastGeneratedAt && generatedAt && generatedAt !== this._lastGeneratedAt) {
+      this._isGenerating = false;
+      this._lastGeneratedAt = generatedAt;
+    }
+    if (this._isGenerating && !this._lastGeneratedAt && generatedAt) {
+      this._isGenerating = false;
+      this._lastGeneratedAt = generatedAt;
+    }
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -222,23 +258,59 @@ class WeeklyPlanCard extends HTMLElement {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 16px;
+          gap: 12px;
         }
         .card-title {
           font-size: 24px;
           font-weight: 500;
           color: var(--primary-text-color);
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
-        .generate-button {
+        .action-buttons {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .action-button {
           padding: 8px 16px;
-          background: var(--primary-color);
-          color: white;
-          border: none;
           border-radius: 4px;
           cursor: pointer;
           font-size: 14px;
+          border: none;
         }
-        .generate-button:hover {
+        .action-button.primary {
+          background: var(--primary-color);
+          color: white;
+        }
+        .action-button.secondary {
+          background: transparent;
+          color: var(--primary-color);
+          border: 1px solid var(--primary-color);
+        }
+        .action-button:hover {
           opacity: 0.9;
+        }
+        .action-button[disabled] {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          background: #e0f2f1;
+          color: #00695c;
+        }
+        .status-note {
+          margin: 0 0 12px;
+          font-size: 12px;
+          color: var(--secondary-text-color);
         }
         .week-grid {
           display: grid;
@@ -386,11 +458,28 @@ class WeeklyPlanCard extends HTMLElement {
       </style>
       <ha-card class="card">
         <div class="card-header">
-          <div class="card-title">🍽️ Wochenplan</div>
-          <button class="generate-button" onclick="this.getRootNode().host._generatePlan()">
-            Neu generieren
-          </button>
+          <div class="card-title">
+            🍽️ Wochenplan
+            ${isCompleted ? `<span class="status-badge">Abgeschlossen am ${completedLabel}</span>` : ''}
+          </div>
+          ${hasPlan ? `
+            <div class="action-buttons">
+              ${isCompleted ? `
+                <button class="action-button primary" ${this._isGenerating ? 'disabled' : ''} onclick="this.getRootNode().host._generatePlan()">
+                  Neuen Plan generieren
+                </button>
+              ` : `
+                <button class="action-button primary" ${this._isGenerating ? 'disabled' : ''} onclick="this.getRootNode().host._completeWeek(true)">
+                  Woche abschliessen
+                </button>
+                <button class="action-button secondary" ${this._isGenerating ? 'disabled' : ''} onclick="this.getRootNode().host._generatePlan()">
+                  Neu generieren
+                </button>
+              `}
+            </div>
+          ` : ''}
         </div>
+        ${this._isGenerating ? `<div class="status-note">Generierung lÃ¤uft ...</div>` : ''}
         ${hasPlan ? `
           <div class="week-grid">
             ${weekdays.map(weekday => `
@@ -403,7 +492,7 @@ class WeeklyPlanCard extends HTMLElement {
         ` : `
           <div class="no-plan">
             <p>Kein Wochenplan vorhanden</p>
-            <button class="generate-button" onclick="this.getRootNode().host._generatePlan()">
+            <button class="action-button primary" ${this._isGenerating ? 'disabled' : ''} onclick="this.getRootNode().host._generatePlan()">
               Wochenplan generieren
             </button>
           </div>
@@ -430,6 +519,8 @@ console.info(
   'color: white; background: #4caf50; font-weight: 700;',
   'color: #4caf50; background: white; font-weight: 700;'
 );
+
+
 
 
 

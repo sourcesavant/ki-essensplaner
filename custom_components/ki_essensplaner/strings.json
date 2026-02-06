@@ -154,6 +154,16 @@
       "name": "Delete Weekly Plan",
       "description": "Delete the current weekly plan."
     },
+    "complete_week": {
+      "name": "Complete Week",
+      "description": "Mark the current weekly plan as completed and persist cooked meals. Optionally generate a new plan afterwards.",
+      "fields": {
+        "generate_next": {
+          "name": "Generate Next Plan",
+          "description": "Automatically generate a new weekly plan after completion"
+        }
+      }
+    },
     "fetch_recipes": {
       "name": "Fetch Recipes",
       "description": "Fetch and scrape recipes for all meal URLs that are not yet linked to a recipe.",

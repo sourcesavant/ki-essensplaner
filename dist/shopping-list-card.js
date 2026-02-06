@@ -16,10 +16,12 @@ class ShoppingListCard extends HTMLElement {
   }
 
   setConfig(config) {
+    const entityId = config?.entity || config?.total_entity || null;
+    const prefix = this._deriveEntityPrefix(entityId);
     this._config = {
-      bioland_entity: 'sensor.essensplaner_bioland_anzahl',
-      rewe_entity: 'sensor.essensplaner_rewe_anzahl',
-      total_entity: 'sensor.essensplaner_einkaufsliste_anzahl',
+      bioland_entity: `${prefix}bioland_anzahl`,
+      rewe_entity: `${prefix}rewe_anzahl`,
+      total_entity: `${prefix}einkaufsliste_anzahl`,
       ...config
     };
     this.render();
@@ -32,6 +34,23 @@ class ShoppingListCard extends HTMLElement {
 
   getCardSize() {
     return 6;
+  }
+
+  _deriveEntityPrefix(entityId) {
+    if (!entityId) return 'sensor.essensplaner_';
+    if (entityId.endsWith('_einkaufsliste_anzahl')) {
+      return entityId.slice(0, -'einkaufsliste_anzahl'.length);
+    }
+    if (entityId.endsWith('_shopping_list_count')) {
+      return entityId.slice(0, -'shopping_list_count'.length);
+    }
+    if (entityId.endsWith('_bioland_anzahl')) {
+      return entityId.slice(0, -'bioland_anzahl'.length);
+    }
+    if (entityId.endsWith('_rewe_anzahl')) {
+      return entityId.slice(0, -'rewe_anzahl'.length);
+    }
+    return 'sensor.essensplaner_';
   }
 
   _switchTab(tab) {
@@ -80,14 +99,22 @@ class ShoppingListCard extends HTMLElement {
     const biolandState = this._hass.states[this._config.bioland_entity];
     const reweState = this._hass.states[this._config.rewe_entity];
     const totalState = this._hass.states[this._config.total_entity];
+    const missingEntities = [];
+
+    if (!biolandState) missingEntities.push(this._config.bioland_entity);
+    if (!reweState) missingEntities.push(this._config.rewe_entity);
+    if (!totalState) missingEntities.push(this._config.total_entity);
 
     const biolandItems = biolandState?.attributes?.items || [];
     const reweItems = reweState?.attributes?.items || [];
     const biolandCount = biolandItems.length;
     const reweCount = reweItems.length;
-    const totalCount = totalState?.state || 0;
+    const totalFromState = Number(totalState?.state);
+    const totalCount = Number.isFinite(totalFromState) && totalFromState >= 0
+      ? totalFromState
+      : biolandCount + reweCount;
 
-    const hasItems = totalCount > 0;
+    const hasItems = (biolandCount + reweCount) > 0 || totalCount > 0;
 
     const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
     const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
@@ -233,7 +260,15 @@ class ShoppingListCard extends HTMLElement {
           <div class="card-stats">${totalCount} Artikel</div>
         </div>
 
-        ${hasItems ? `
+        ${missingEntities.length > 0 ? `
+          <div class="no-items">
+            <p>Fehlende Sensoren für die Einkaufsliste</p>
+            <p style="font-size: 14px;">Bitte prüfe die Entity-IDs:</p>
+            <div style="font-size: 12px; margin-top: 8px; color: var(--secondary-text-color);">
+              ${missingEntities.map(entity => `<div>${entity}</div>`).join('')}
+            </div>
+          </div>
+        ` : hasItems ? `
           <div class="tabs">
             <button
               class="tab ${this._activeTab === 'bioland' ? 'active' : ''}"

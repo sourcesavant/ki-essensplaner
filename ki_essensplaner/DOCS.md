@@ -77,6 +77,7 @@ Nach der Registrierung:
 | `/api/weekly-plan/generate` | POST | Ja | Neuen Wochenplan generieren (async, ~30-120 Sek.) |
 | `/api/weekly-plan/select` | POST | Ja | Rezept für einen Slot auswählen |
 | `/api/weekly-plan/select-url` | POST | Ja | Rezept-URL für einen Slot scrapen und auswählen |
+| `/api/weekly-plan/complete` | POST | Ja | Woche abschließen und gekochte Gerichte speichern |
 | `/api/weekly-plan` | DELETE | Ja | Wochenplan löschen |
 
 ### Einkaufsliste
@@ -233,6 +234,43 @@ Nach der Installation können Sie den begleitenden Custom Component "KI-Essenspl
 - **Attribute**:
   - `ingredients`: Sortierte Liste der ausgeschlossenen Zutaten
 
+**Einkaufsliste Sensoren**:
+- **`sensor.essensplaner_einkaufsliste_anzahl`**
+  - **State**: Anzahl Positionen in der Einkaufsliste
+  - **Attribute**:
+    - `week_start`: Startdatum der Woche
+    - `recipe_count`: Anzahl Rezepte im Plan
+    - `household_size`: Haushaltsgroesse
+    - `items`: Liste der Einkaufspositionen
+- **`sensor.essensplaner_bioland_anzahl`**
+  - **State**: Anzahl Bioland-Positionen
+  - **Attribute**:
+    - `items`: Liste der Bioland-Positionen
+    - `week_start`: Startdatum der Woche
+- **`sensor.essensplaner_rewe_anzahl`**
+  - **State**: Anzahl Rewe-Positionen
+  - **Attribute**:
+    - `items`: Liste der Rewe-Positionen
+    - `week_start`: Startdatum der Woche
+
+Hinweis: Je nach Integrationsname kann der Prefix abweichen (z.B. `sensor.ki_essensplaner_...`).
+
+### Lovelace Karten
+
+**Einkaufsliste (Shopping List Card)**:
+```yaml
+type: custom:shopping-list-card
+entity: sensor.essensplaner_einkaufsliste_anzahl
+```
+
+Optional kannst du die Entities explizit setzen:
+```yaml
+type: custom:shopping-list-card
+bioland_entity: sensor.essensplaner_bioland_anzahl
+rewe_entity: sensor.essensplaner_rewe_anzahl
+total_entity: sensor.essensplaner_einkaufsliste_anzahl
+```
+
 ### Services
 
 **`ki_essensplaner.rate_recipe`**:
@@ -298,13 +336,22 @@ Lösche den aktuellen Wochenplan
 service: ki_essensplaner.delete_weekly_plan
 ```
 
+**`ki_essensplaner.complete_week`**:
+Markiere den aktuellen Wochenplan als abgeschlossen und speichere die gekochten Gerichte.
+```yaml
+service: ki_essensplaner.complete_week
+data:
+  generate_next: true
+```
+
 ### Wochenplan-Sensoren
 
 **`sensor.essensplaner_weekly_plan_status`**:
-- **State**: `active` oder `no_plan`
+- **State**: `active`, `completed` oder `no_plan`
 - **Attribute**:
   - `week_start`: Start-Datum der Woche
   - `generated_at`: Generierungs-Zeitpunkt
+  - `completed_at`: Abschluss-Zeitpunkt (falls gesetzt)
   - `favorites_count`: Anzahl Favoriten
   - `new_count`: Anzahl neue Rezepte
   - `total_slots`: Anzahl Slots (14)
@@ -348,3 +395,6 @@ Alle Daten werden unter `/share/ki_essensplaner/` gespeichert und bleiben bei Ad
 
 Bei Problemen erstellen Sie bitte ein Issue auf GitHub:
 https://github.com/sourcesavant/ki-essensplaner/issues
+
+
+
