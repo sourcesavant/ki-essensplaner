@@ -155,6 +155,47 @@ set_multi_day:
           step: 1
           mode: slider
 
+set_multi_day_preferences:
+  name: Set Multi-Day Preferences
+  description: Configure multi-day meal prep rules to apply before generating a weekly plan.
+  fields:
+    primary_weekday:
+      name: Primary Weekday
+      description: The day when you cook the recipe
+      required: true
+      example: "Sonntag"
+      selector:
+        select:
+          options:
+            - "Montag"
+            - "Dienstag"
+            - "Mittwoch"
+            - "Donnerstag"
+            - "Freitag"
+            - "Samstag"
+            - "Sonntag"
+    primary_slot:
+      name: Primary Meal Slot
+      description: The meal slot when you cook (Mittagessen or Abendessen)
+      required: true
+      example: "Abendessen"
+      selector:
+        select:
+          options:
+            - "Mittagessen"
+            - "Abendessen"
+    reuse_days:
+      name: Reuse Days
+      description: Number of consecutive days to eat the leftovers (1-6)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 6
+          step: 1
+          mode: slider
+
 clear_multi_day:
   name: Clear Multi-Day Meal Prep
   description: Remove multi-day meal prep configuration for a specific slot, reverting it to a normal meal slot.
@@ -178,6 +219,36 @@ clear_multi_day:
       name: Meal Slot
       description: Meal slot (Mittagessen or Abendessen)
       required: true
+      example: "Abendessen"
+      selector:
+        select:
+          options:
+            - "Mittagessen"
+            - "Abendessen"
+
+clear_multi_day_preferences:
+  name: Clear Multi-Day Preferences
+  description: Remove stored multi-day preferences (all or for a specific primary slot).
+  fields:
+    primary_weekday:
+      name: Primary Weekday
+      description: Optional. If set with primary slot, only this preference is removed.
+      required: false
+      example: "Sonntag"
+      selector:
+        select:
+          options:
+            - "Montag"
+            - "Dienstag"
+            - "Mittwoch"
+            - "Donnerstag"
+            - "Freitag"
+            - "Samstag"
+            - "Sonntag"
+    primary_slot:
+      name: Primary Meal Slot
+      description: Optional. If set with primary weekday, only this preference is removed.
+      required: false
       example: "Abendessen"
       selector:
         select:

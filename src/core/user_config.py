@@ -61,6 +61,29 @@ def get_household_size() -> int:
     return load_config().get("household_size", DEFAULT_HOUSEHOLD_SIZE)
 
 
+def get_multi_day_preferences() -> list[dict]:
+    """Get stored multi-day meal prep preferences.
+
+    Returns:
+        List of preference groups (may be empty)
+    """
+    prefs = load_config().get("multi_day_preferences", [])
+    if isinstance(prefs, list):
+        return prefs
+    return []
+
+
+def set_multi_day_preferences(groups: list[dict]) -> None:
+    """Set multi-day meal prep preferences.
+
+    Args:
+        groups: List of preference groups to persist
+    """
+    config = load_config()
+    config["multi_day_preferences"] = groups
+    save_config(config)
+
+
 def set_household_size(size: int) -> None:
     """Set household size (1-10 persons).
 

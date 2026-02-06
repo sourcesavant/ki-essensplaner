@@ -75,6 +75,12 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "GET",
                     "/api/weekly-plan/multi-day",
                 ) or []
+                data["multi_day_preferences"] = await self._fetch_cached_json(
+                    session,
+                    "multi_day_preferences",
+                    "GET",
+                    "/api/weekly-plan/multi-day/preferences",
+                ) or []
                 data["shopping_list"] = await self._fetch_cached_json(
                     session,
                     "shopping_list",
@@ -523,6 +529,42 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.error("Error fetching multi-day groups: %s", err)
             return []
+
+    async def get_multi_day_preferences(self) -> list[dict]:
+        """Get stored multi-day preferences for future plan generation."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.api_url}/api/weekly-plan/multi-day/preferences",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("groups", [])
+            return []
+        except Exception as err:
+            _LOGGER.error("Error fetching multi-day preferences: %s", err)
+            return []
+
+    async def set_multi_day_preferences(self, groups: list[dict]) -> None:
+        """Set multi-day preferences for future plan generation."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    f"{self.api_url}/api/weekly-plan/multi-day/preferences",
+                    headers=self._get_headers(),
+                    json={"groups": groups},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set multi-day preferences: %s", error_text)
+                        raise UpdateFailed(f"Failed to set multi-day preferences: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting multi-day preferences: %s", err)
+            raise UpdateFailed(f"Error setting multi-day preferences: {err}") from err
 
     async def fetch_recipes(self, delay_seconds: float = 0.5) -> None:
         """Trigger background recipe fetch from meal URLs."""

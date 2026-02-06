@@ -19,12 +19,15 @@ from src.api.schemas.weekly_plan import (
     GenerateWeeklyPlanResponse,
     MultiDayGroupResponse,
     MultiDayResponse,
+    MultiDayPreferencesRequest,
+    MultiDayPreferencesResponse,
     RecipeResponse,
     SelectRecipeRequest,
     SetMultiDayRequest,
     SlotResponse,
     WeeklyPlanResponse,
 )
+from src.core.user_config import get_multi_day_preferences, set_multi_day_preferences
 
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
 
@@ -96,7 +99,8 @@ def _generate_plan_sync() -> None:
     """Synchronous wrapper for plan generation (runs in background)."""
     try:
         print("[API] Starting weekly plan generation...")
-        plan = run_search_agent()
+        preferences = get_multi_day_preferences()
+        plan = run_search_agent(multi_day_preferences=preferences)
         save_weekly_plan(plan)
         print(f"[API] Weekly plan generated successfully: {len(plan.slots)} slots")
     except Exception as e:
@@ -339,3 +343,105 @@ def get_multi_day_groups(
         )
 
     return groups
+
+
+def _validate_multi_day_preferences(
+    groups: list[dict],
+) -> list[dict]:
+    """Validate and normalize multi-day preference groups."""
+    seen_slots: set[tuple[str, str]] = set()
+    normalized: list[dict] = []
+
+    for group in groups:
+        primary_weekday = group.get("primary_weekday")
+        primary_slot = group.get("primary_slot")
+        reuse_slots = group.get("reuse_slots") or []
+
+        if primary_weekday not in WEEKDAYS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid weekday: {primary_weekday}",
+            )
+        if primary_slot not in MEAL_SLOTS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid slot: {primary_slot}",
+            )
+
+        if not reuse_slots:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="reuse_slots must contain at least one slot",
+            )
+
+        group_slots: list[tuple[str, str]] = [(primary_weekday, primary_slot)]
+        normalized_reuse: list[dict] = []
+
+        for reuse in reuse_slots:
+            weekday = reuse.get("weekday")
+            slot = reuse.get("slot")
+            if weekday not in WEEKDAYS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid weekday: {weekday}",
+                )
+            if slot not in MEAL_SLOTS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid slot: {slot}",
+                )
+            if weekday == primary_weekday and slot == primary_slot:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="reuse_slots cannot include the primary slot",
+                )
+            group_slots.append((weekday, slot))
+            normalized_reuse.append({"weekday": weekday, "slot": slot})
+
+        for slot_key in group_slots:
+            if slot_key in seen_slots:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Slot appears in multiple groups: {slot_key[0]} {slot_key[1]}",
+                )
+            seen_slots.add(slot_key)
+
+        normalized.append(
+            {
+                "primary_weekday": primary_weekday,
+                "primary_slot": primary_slot,
+                "reuse_slots": normalized_reuse,
+            }
+        )
+
+    return normalized
+
+
+@router.get("/multi-day/preferences", response_model=MultiDayPreferencesResponse)
+def get_multi_day_preferences_endpoint(
+    _token: str = Depends(verify_token),
+) -> MultiDayPreferencesResponse:
+    """Get stored multi-day preferences for future plan generation."""
+    return MultiDayPreferencesResponse(groups=get_multi_day_preferences())
+
+
+@router.put("/multi-day/preferences", response_model=MultiDayPreferencesResponse)
+def set_multi_day_preferences_endpoint(
+    request: MultiDayPreferencesRequest,
+    _token: str = Depends(verify_token),
+) -> MultiDayPreferencesResponse:
+    """Set multi-day preferences to be applied before plan generation."""
+    normalized = _validate_multi_day_preferences(
+        [g.model_dump() for g in request.groups]
+    )
+    set_multi_day_preferences(normalized)
+    return MultiDayPreferencesResponse(groups=normalized)
+
+
+@router.delete("/multi-day/preferences")
+def clear_multi_day_preferences_endpoint(
+    _token: str = Depends(verify_token),
+) -> dict:
+    """Clear all stored multi-day preferences."""
+    set_multi_day_preferences([])
+    return {"success": True, "message": "Multi-day preferences cleared"}

@@ -42,6 +42,17 @@ SET_MULTI_DAY_SCHEMA = vol.Schema({
     vol.Required("reuse_days"): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
 })
 
+CLEAR_MULTI_DAY_PREFERENCES_SCHEMA = vol.Schema({
+    vol.Optional("primary_weekday"): cv.string,
+    vol.Optional("primary_slot"): cv.string,
+})
+
+SET_MULTI_DAY_PREFERENCES_SCHEMA = vol.Schema({
+    vol.Required("primary_weekday"): cv.string,
+    vol.Required("primary_slot"): cv.string,
+    vol.Required("reuse_days"): vol.All(vol.Coerce(int), vol.Range(min=1, max=6)),
+})
+
 CLEAR_MULTI_DAY_SCHEMA = vol.Schema({
     vol.Required("weekday"): cv.string,
     vol.Required("slot"): cv.string,
@@ -189,6 +200,59 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.set_multi_day(primary_weekday, primary_slot, reuse_slots)
 
+    async def handle_set_multi_day_preferences(call: ServiceCall) -> None:
+        """Handle set_multi_day_preferences service call."""
+        primary_weekday = call.data["primary_weekday"]
+        primary_slot = call.data["primary_slot"]
+        reuse_days = call.data["reuse_days"]
+
+        weekdays = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+        start_idx = weekdays.index(primary_weekday)
+        reuse_slots = []
+
+        for i in range(1, reuse_days + 1):
+            next_idx = (start_idx + i) % 7
+            reuse_slots.append({
+                "weekday": weekdays[next_idx],
+                "slot": primary_slot
+            })
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        existing = await coordinator.get_multi_day_preferences()
+        updated = [
+            g for g in existing
+            if not (
+                g.get("primary_weekday") == primary_weekday
+                and g.get("primary_slot") == primary_slot
+            )
+        ]
+        updated.append({
+            "primary_weekday": primary_weekday,
+            "primary_slot": primary_slot,
+            "reuse_slots": reuse_slots,
+        })
+        await coordinator.set_multi_day_preferences(updated)
+
+    async def handle_clear_multi_day_preferences(call: ServiceCall) -> None:
+        """Handle clear_multi_day_preferences service call."""
+        primary_weekday = call.data.get("primary_weekday")
+        primary_slot = call.data.get("primary_slot")
+
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        if not primary_weekday or not primary_slot:
+            await coordinator.set_multi_day_preferences([])
+            return
+
+        existing = await coordinator.get_multi_day_preferences()
+        updated = [
+            g for g in existing
+            if not (
+                g.get("primary_weekday") == primary_weekday
+                and g.get("primary_slot") == primary_slot
+            )
+        ]
+        await coordinator.set_multi_day_preferences(updated)
+
     async def handle_clear_multi_day(call: ServiceCall) -> None:
         """Handle clear_multi_day service call."""
         weekday = call.data["weekday"]
@@ -232,6 +296,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, "set_multi_day", handle_set_multi_day, schema=SET_MULTI_DAY_SCHEMA
     )
     hass.services.async_register(
+        DOMAIN,
+        "set_multi_day_preferences",
+        handle_set_multi_day_preferences,
+        schema=SET_MULTI_DAY_PREFERENCES_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "clear_multi_day_preferences",
+        handle_clear_multi_day_preferences,
+        schema=CLEAR_MULTI_DAY_PREFERENCES_SCHEMA,
+    )
+    hass.services.async_register(
         DOMAIN, "clear_multi_day", handle_clear_multi_day, schema=CLEAR_MULTI_DAY_SCHEMA
     )
     hass.services.async_register(
@@ -256,6 +332,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "set_household_size")
             hass.services.async_remove(DOMAIN, "set_multi_day")
             hass.services.async_remove(DOMAIN, "clear_multi_day")
+            hass.services.async_remove(DOMAIN, "set_multi_day_preferences")
+            hass.services.async_remove(DOMAIN, "clear_multi_day_preferences")
             hass.services.async_remove(DOMAIN, "fetch_recipes")
 
     return unload_ok

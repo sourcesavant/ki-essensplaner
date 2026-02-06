@@ -465,9 +465,87 @@ def _assign_recipes_to_slots(
     return recommendations
 
 
+def _recipe_key(recipe: ScoredRecipe) -> tuple[str, str | int] | None:
+    """Build a stable key to detect duplicate recipes across slots."""
+    if recipe.recipe_id is not None:
+        return ("id", recipe.recipe_id)
+    if recipe.url:
+        return ("url", recipe.url)
+    if recipe.title:
+        return ("title", recipe.title)
+    return None
+
+
+def _build_multi_day_maps(
+    preferences: list[dict] | None,
+) -> tuple[dict[tuple[str, str], int], set[tuple[str, str]]]:
+    """Build lookup maps for multi-day preferences."""
+    group_id_by_slot: dict[tuple[str, str], int] = {}
+    planned_reuse_slots: set[tuple[str, str]] = set()
+
+    if not preferences:
+        return group_id_by_slot, planned_reuse_slots
+
+    for idx, group in enumerate(preferences):
+        primary = (group.get("primary_weekday"), group.get("primary_slot"))
+        if None in primary:
+            continue
+        group_id_by_slot[primary] = idx
+        for reuse in group.get("reuse_slots", []):
+            slot = (reuse.get("weekday"), reuse.get("slot"))
+            if None in slot:
+                continue
+            group_id_by_slot[slot] = idx
+            planned_reuse_slots.add(slot)
+
+    return group_id_by_slot, planned_reuse_slots
+
+
+def _select_unique_recipes(
+    recommendations: list[SlotRecommendation],
+    group_id_by_slot: dict[tuple[str, str], int],
+    planned_reuse_slots: set[tuple[str, str]],
+) -> None:
+    """Pick unique default selections unless allowed by multi-day groups."""
+    used_by_key: dict[tuple[str, str | int], list[tuple[str, str]]] = {}
+
+    for slot_rec in recommendations:
+        slot_key = (slot_rec.weekday, slot_rec.slot)
+
+        # Planned reuse slots will be overridden later
+        if slot_key in planned_reuse_slots:
+            continue
+
+        chosen_index = 0
+        for idx, recipe in enumerate(slot_rec.recommendations):
+            key = _recipe_key(recipe)
+            if key is None:
+                continue
+
+            if key not in used_by_key:
+                chosen_index = idx
+                break
+
+            current_group = group_id_by_slot.get(slot_key)
+            if current_group is not None:
+                used_slots = used_by_key.get(key, [])
+                if used_slots and all(group_id_by_slot.get(s) == current_group for s in used_slots):
+                    chosen_index = idx
+                    break
+
+        slot_rec.selected_index = chosen_index
+        if slot_rec.recommendations:
+            chosen = slot_rec.recommendations[chosen_index]
+            chosen_key = _recipe_key(chosen)
+            if chosen_key is not None:
+                used_by_key.setdefault(chosen_key, []).append(slot_key)
+
+
 def run_search_agent(
     target_day: str | None = None,
     target_slot: str | None = None,
+    *,
+    multi_day_preferences: list[dict] | None = None,
 ) -> WeeklyRecommendation:
     """Run the recipe search agent.
 
@@ -555,6 +633,9 @@ def run_search_agent(
         all_slots, favorites, new_recipes, context
     )
 
+    group_id_by_slot, planned_reuse_slots = _build_multi_day_maps(multi_day_preferences)
+    _select_unique_recipes(slot_recommendations, group_id_by_slot, planned_reuse_slots)
+
     # Calculate stats
     favorites_count = sum(
         1 for r in slot_recommendations
@@ -567,6 +648,18 @@ def run_search_agent(
         new_count=new_count,
         slots=slot_recommendations,
     )
+
+    if multi_day_preferences:
+        for group in multi_day_preferences:
+            primary_weekday = group.get("primary_weekday")
+            primary_slot = group.get("primary_slot")
+            reuse_slots = [
+                (r.get("weekday"), r.get("slot"))
+                for r in group.get("reuse_slots", [])
+                if r.get("weekday") and r.get("slot")
+            ]
+            if primary_weekday and primary_slot and reuse_slots:
+                result.set_multi_day(primary_weekday, primary_slot, reuse_slots)
 
     # Save the plan
     print("\n11. Saving weekly plan...")

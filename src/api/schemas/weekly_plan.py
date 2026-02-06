@@ -93,5 +93,32 @@ class MultiDayResponse(BaseModel):
     affected_slots: list[str]
 
 
+class MultiDaySlot(BaseModel):
+    """A single slot for multi-day preferences."""
+
+    weekday: str
+    slot: str
+
+
+class MultiDayPreferenceGroup(BaseModel):
+    """Preference group for multi-day planning (applies before generation)."""
+
+    primary_weekday: str
+    primary_slot: str
+    reuse_slots: list[MultiDaySlot]
+
+
+class MultiDayPreferencesRequest(BaseModel):
+    """Request to set multi-day preferences."""
+
+    groups: list[MultiDayPreferenceGroup]
+
+
+class MultiDayPreferencesResponse(BaseModel):
+    """Response for multi-day preferences."""
+
+    groups: list[MultiDayPreferenceGroup]
+
+
 MultiDayGroupResponse.model_rebuild()
 MultiDayResponse.model_rebuild()

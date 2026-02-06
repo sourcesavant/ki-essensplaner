@@ -44,6 +44,7 @@ async def async_setup_entry(
 
         # Multi-day meal prep sensor
         MultiDayOverviewSensor(coordinator, entry),
+        MultiDayPreferencesSensor(coordinator, entry),
 
         # Next meal sensor
         NextMealSensor(coordinator, entry),
@@ -572,6 +573,47 @@ class MultiDayOverviewSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
             "groups": groups,
             "total_prep_meals": sum(g.get("total_days", 1) for g in groups),
             "unique_recipes": len(groups),
+        }
+
+
+class MultiDayPreferencesSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor showing configured multi-day preferences."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Meal Prep Preferences"
+    _attr_icon = "mdi:calendar-sync"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_multi_day_preferences"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+
+    @property
+    def native_value(self) -> str:
+        """Return number of preference groups."""
+        groups = self.coordinator.data.get("multi_day_preferences", []) if self.coordinator.data else []
+        if not groups:
+            return "Keine Regeln"
+        return f"{len(groups)} Regeln"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return preference details."""
+        groups = self.coordinator.data.get("multi_day_preferences", []) if self.coordinator.data else []
+        total_slots = 0
+        for group in groups:
+            total_slots += 1 + len(group.get("reuse_slots", []))
+        return {
+            "groups": groups,
+            "total_slots": total_slots,
+            "group_count": len(groups),
         }
 
 
