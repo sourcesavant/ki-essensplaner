@@ -47,6 +47,10 @@ CLEAR_MULTI_DAY_SCHEMA = vol.Schema({
     vol.Required("slot"): cv.string,
 })
 
+FETCH_RECIPES_SCHEMA = vol.Schema({
+    vol.Optional("delay_seconds", default=0.5): vol.Coerce(float),
+})
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up KI-Essensplaner from a config entry."""
@@ -193,6 +197,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.clear_multi_day(weekday, slot)
 
+    async def handle_fetch_recipes(call: ServiceCall) -> None:
+        """Handle fetch_recipes service call."""
+        delay_seconds = call.data.get("delay_seconds", 0.5)
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.fetch_recipes(delay_seconds)
+
     # Register services
     hass.services.async_register(
         DOMAIN, "rate_recipe", handle_rate_recipe, schema=RATE_RECIPE_SCHEMA
@@ -224,6 +234,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "clear_multi_day", handle_clear_multi_day, schema=CLEAR_MULTI_DAY_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, "fetch_recipes", handle_fetch_recipes, schema=FETCH_RECIPES_SCHEMA
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -243,5 +256,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "set_household_size")
             hass.services.async_remove(DOMAIN, "set_multi_day")
             hass.services.async_remove(DOMAIN, "clear_multi_day")
+            hass.services.async_remove(DOMAIN, "fetch_recipes")
 
     return unload_ok

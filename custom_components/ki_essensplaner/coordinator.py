@@ -519,10 +519,28 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ) as response:
                     if response.status == 200:
                         return await response.json()
-                    return []
+            return []
         except Exception as err:
             _LOGGER.error("Error fetching multi-day groups: %s", err)
             return []
+
+    async def fetch_recipes(self, delay_seconds: float = 0.5) -> None:
+        """Trigger background recipe fetch from meal URLs."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/recipes/fetch",
+                    headers=self._get_headers(),
+                    params={"delay_seconds": delay_seconds},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to start recipe fetch: %s", error_text)
+                        raise UpdateFailed(f"Failed to start recipe fetch: {error_text}")
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error starting recipe fetch: %s", err)
+            raise UpdateFailed(f"Error starting recipe fetch: {err}") from err
 
     async def get_shopping_list(self) -> dict[str, Any] | None:
         """Get aggregated shopping list from API.

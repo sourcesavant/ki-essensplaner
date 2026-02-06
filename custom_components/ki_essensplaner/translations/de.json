@@ -134,6 +134,16 @@
     "delete_weekly_plan": {
       "name": "Wochenplan Löschen",
       "description": "Lösche den aktuellen Wochenplan."
+    },
+    "fetch_recipes": {
+      "name": "Rezepte Abrufen",
+      "description": "Scrape Rezepte für alle Mahlzeiten-URLs, die noch keinem Rezept zugeordnet sind.",
+      "fields": {
+        "delay_seconds": {
+          "name": "Verzögerung (Sekunden)",
+          "description": "Verzögerung zwischen Requests, um Rate-Limits zu vermeiden."
+        }
+      }
     }
   }
 }

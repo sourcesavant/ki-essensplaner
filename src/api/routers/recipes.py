@@ -1,6 +1,6 @@
 """Recipe management API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from src.api.auth import verify_token
 from src.api.schemas.recipes import (
@@ -18,6 +18,7 @@ from src.core.database import (
     rate_recipe,
     remove_excluded_ingredient,
 )
+from src.scrapers.recipe_fetcher import fetch_all_recipes
 
 router = APIRouter(prefix="/api", tags=["recipes"])
 
@@ -161,3 +162,18 @@ def get_excluded_ingredients_endpoint(
     """
     excluded = get_excluded_ingredients()
     return ExcludedIngredientsResponse(ingredients=sorted(excluded))
+
+
+@router.post("/recipes/fetch")
+def fetch_recipes_endpoint(
+    background_tasks: BackgroundTasks,
+    delay_seconds: float = 0.5,
+    _token: str = Depends(verify_token),
+) -> dict:
+    """Trigger background recipe fetching from meal URLs.
+
+    Args:
+        delay_seconds: Delay between requests to avoid rate limiting
+    """
+    background_tasks.add_task(fetch_all_recipes, delay_seconds)
+    return {"status": "started", "delay_seconds": delay_seconds}

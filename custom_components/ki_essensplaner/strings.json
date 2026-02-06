@@ -135,6 +135,16 @@
     "delete_weekly_plan": {
       "name": "Delete Weekly Plan",
       "description": "Delete the current weekly plan."
+    },
+    "fetch_recipes": {
+      "name": "Fetch Recipes",
+      "description": "Fetch and scrape recipes for all meal URLs that are not yet linked to a recipe.",
+      "fields": {
+        "delay_seconds": {
+          "name": "Delay Seconds",
+          "description": "Delay between requests to avoid rate limiting."
+        }
+      }
     }
   }
 }
