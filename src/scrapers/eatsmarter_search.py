@@ -18,6 +18,7 @@ import hashlib
 import json
 import re
 import time
+import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
@@ -254,7 +255,14 @@ def search_recipes(
     print(f"Searching eatsmarter.de for: {', '.join(include_ingredients)}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
+        chromium_path = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+        launch_kwargs = {
+            "headless": headless,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+        }
+        if chromium_path:
+            launch_kwargs["executable_path"] = chromium_path
+        browser = p.chromium.launch(**launch_kwargs)
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
