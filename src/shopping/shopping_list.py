@@ -432,26 +432,35 @@ def generate_shopping_list(
                 "factor": round(total_factor, 2),
             })
 
-        # Get ingredients - prefer from DB if recipe_id exists
+        # Get ingredients - prefer parsed DB ingredients, fallback to raw recipe ingredients
         if recipe.recipe_id:
             parsed = _get_parsed_ingredients_for_recipe(recipe.recipe_id)
             recipe_count += 1
 
-            for ing in parsed:
-                ingredient = ing["ingredient"]
-                unit = _normalize_unit(ing["unit"])
-                amount = ing["amount"]
+            if parsed:
+                for ing in parsed:
+                    ingredient = ing["ingredient"]
+                    unit = _normalize_unit(ing["unit"])
+                    amount = ing["amount"]
 
-                key = (ingredient, unit)
+                    key = (ingredient, unit)
 
-                if amount:
-                    # Scale the amount
-                    scaled_amount = amount * total_factor
-                    aggregated[key]["amount"] += scaled_amount
-                    aggregated[key]["has_amount"] = True
+                    if amount:
+                        # Scale the amount
+                        scaled_amount = amount * total_factor
+                        aggregated[key]["amount"] += scaled_amount
+                        aggregated[key]["has_amount"] = True
 
-                if recipe_label not in aggregated[key]["recipes"]:
-                    aggregated[key]["recipes"].append(recipe_label)
+                    if recipe_label not in aggregated[key]["recipes"]:
+                        aggregated[key]["recipes"].append(recipe_label)
+            elif recipe.ingredients:
+                for ing_str in recipe.ingredients:
+                    # Simple parsing: just use the ingredient string as-is
+                    key = (ing_str.lower(), None)
+                    aggregated[key]["has_amount"] = False
+
+                    if recipe_label not in aggregated[key]["recipes"]:
+                        aggregated[key]["recipes"].append(recipe_label)
 
         elif recipe.ingredients:
             # Fallback: use raw ingredients from recipe (for new recipes without DB entry)
