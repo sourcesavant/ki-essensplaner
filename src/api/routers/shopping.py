@@ -1,7 +1,5 @@
 """Shopping list API endpoints."""
 
-import hashlib
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.agents.models import load_weekly_plan
@@ -43,24 +41,7 @@ def get_shopping_list(_token: str = Depends(verify_token)) -> ShoppingListRespon
             detail="No weekly plan found. Generate one first using POST /api/weekly-plan/generate.",
         )
 
-    selected = plan.get_selected_recipes()
-    print(
-        "Shopping list request: selected_recipes=%s"
-        % [f"{w} {s}: {r.title}" for w, s, r in selected]
-    )
     shopping_list = generate_shopping_list(plan)
-    item_fingerprint = [
-        f"{i.ingredient}|{i.unit or ''}|{i.amount or ''}" for i in shopping_list.items
-    ]
-    digest = hashlib.sha1(
-        "|".join(sorted(item_fingerprint)).encode("utf-8")
-    ).hexdigest()
-    print(
-        "Shopping list generated: recipe_count=%s items=%s"
-        % (shopping_list.recipe_count, len(shopping_list.items))
-    )
-    print("Shopping list hash: %s" % digest)
-    print("Shopping list sample: %s" % item_fingerprint[:5])
 
     return ShoppingListResponse(
         week_start=shopping_list.week_start,

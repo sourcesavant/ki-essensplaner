@@ -352,18 +352,6 @@ def select_recipe(
 
     # Save updated plan
     save_weekly_plan(plan)
-    slot_after = plan.get_slot(request.weekday, request.slot)
-    selected = slot_after.selected_recipe if slot_after else None
-    print(
-        "Select recipe: %s %s index=%s selected=%s"
-        % (
-            request.weekday,
-            request.slot,
-            request.recipe_index,
-            selected.title if selected else None,
-        )
-    )
-
     return _convert_to_response(plan)
 
 
