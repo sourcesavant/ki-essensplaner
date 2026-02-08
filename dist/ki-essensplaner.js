@@ -434,6 +434,7 @@ class ShoppingListCard extends HTMLElement {
     this._config = null;
     this._activeTab = 'bioland';
     this._checkedItems = new Set();
+    this._lastRenderKey = null;
   }
 
   setConfig(config) {
@@ -558,6 +559,9 @@ class ShoppingListCard extends HTMLElement {
 
     const prevListEl = this.shadowRoot?.querySelector('.item-list');
     const prevScrollTop = prevListEl ? prevListEl.scrollTop : 0;
+    const prevPageScroll = document.scrollingElement
+      ? document.scrollingElement.scrollTop
+      : window.scrollY;
 
     const biolandState = this._hass.states[this._config.bioland_entity];
     const reweState = this._hass.states[this._config.rewe_entity];
@@ -581,6 +585,18 @@ class ShoppingListCard extends HTMLElement {
 
     const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
     const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
+
+    const renderKey = JSON.stringify({
+      missing: missingEntities,
+      active: this._activeTab,
+      totalCount,
+      biolandItems,
+      reweItems
+    });
+    if (this._lastRenderKey === renderKey) {
+      return;
+    }
+    this._lastRenderKey = renderKey;
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -790,6 +806,11 @@ class ShoppingListCard extends HTMLElement {
     if (newListEl) {
       requestAnimationFrame(() => {
         newListEl.scrollTop = prevScrollTop;
+      });
+    }
+    if (document.scrollingElement) {
+      requestAnimationFrame(() => {
+        document.scrollingElement.scrollTop = prevPageScroll;
       });
     }
   }

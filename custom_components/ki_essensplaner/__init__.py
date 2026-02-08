@@ -176,6 +176,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.select_recipe(weekday, slot, recipe_index)
+        await coordinator.refresh_shopping_lists()
+        await coordinator.async_request_refresh()
 
         # Fire event
         hass.bus.async_fire(
@@ -196,6 +198,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.set_recipe_url(weekday, slot, recipe_url)
+        await coordinator.refresh_shopping_lists()
+        await coordinator.async_request_refresh()
 
         hass.bus.async_fire(
             f"{DOMAIN}_plan_updated",

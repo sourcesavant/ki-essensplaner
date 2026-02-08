@@ -271,6 +271,10 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if data:
             self.async_set_updated_data(data)
 
+    async def refresh_shopping_lists(self) -> None:
+        """Public wrapper for immediate shopping list refresh."""
+        await self._refresh_shopping_lists()
+
     async def rate_recipe(self, recipe_id: int, rating: int) -> None:
         """Rate a recipe via API.
 
