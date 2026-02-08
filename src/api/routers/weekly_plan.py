@@ -1,5 +1,7 @@
 """Weekly plan API endpoints."""
 
+import logging
+
 import asyncio
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +46,7 @@ from src.models.meal_plan import DayOfWeek, MealCreate, MealPlanCreate, MealSlot
 from src.scrapers.recipe_fetcher import scrape_recipe
 
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
+_LOGGER = logging.getLogger(__name__)
 
 
 def _convert_to_response(plan: WeeklyRecommendation) -> WeeklyPlanResponse:
@@ -352,6 +355,15 @@ def select_recipe(
 
     # Save updated plan
     save_weekly_plan(plan)
+    slot_after = plan.get_slot(request.weekday, request.slot)
+    selected = slot_after.selected_recipe if slot_after else None
+    _LOGGER.info(
+        "Select recipe: %s %s index=%s selected=%s",
+        request.weekday,
+        request.slot,
+        request.recipe_index,
+        selected.title if selected else None,
+    )
 
     return _convert_to_response(plan)
 

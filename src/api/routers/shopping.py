@@ -1,5 +1,7 @@
 """Shopping list API endpoints."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.agents.models import load_weekly_plan
@@ -12,6 +14,7 @@ from src.api.schemas.shopping import (
 from src.shopping.shopping_list import generate_shopping_list
 
 router = APIRouter(prefix="/api/shopping-list", tags=["shopping"])
+_LOGGER = logging.getLogger(__name__)
 
 
 def _convert_item(item) -> ShoppingItemResponse:
@@ -41,7 +44,17 @@ def get_shopping_list(_token: str = Depends(verify_token)) -> ShoppingListRespon
             detail="No weekly plan found. Generate one first using POST /api/weekly-plan/generate.",
         )
 
+    selected = plan.get_selected_recipes()
+    _LOGGER.info(
+        "Shopping list request: selected_recipes=%s",
+        [f"{w} {s}: {r.title}" for w, s, r in selected],
+    )
     shopping_list = generate_shopping_list(plan)
+    _LOGGER.info(
+        "Shopping list generated: recipe_count=%s items=%s",
+        shopping_list.recipe_count,
+        len(shopping_list.items),
+    )
 
     return ShoppingListResponse(
         week_start=shopping_list.week_start,
