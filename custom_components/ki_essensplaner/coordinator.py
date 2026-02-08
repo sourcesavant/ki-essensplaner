@@ -219,6 +219,58 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             merged.setdefault(key, value)
         return merged
 
+    async def _refresh_shopping_lists(self) -> None:
+        """Fetch shopping list endpoints and push updated data immediately."""
+        async def _fetch_json_no_cache(
+            session: aiohttp.ClientSession,
+            path: str,
+            *,
+            not_found_none: bool = False,
+            timeout: int = 10,
+        ) -> Any | None:
+            try:
+                async with session.get(
+                    f"{self.api_url}{path}",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    if not_found_none and response.status == 404:
+                        return None
+                    _LOGGER.warning(
+                        "Failed to fetch %s (%s): %s",
+                        path,
+                        response.status,
+                        await response.text(),
+                    )
+            except Exception as err:
+                _LOGGER.error("Error fetching %s: %s", path, err)
+            return None
+
+        data = self.data.copy() if self.data else {}
+        async with aiohttp.ClientSession() as session:
+            shopping_list = await _fetch_json_no_cache(
+                session,
+                "/api/shopping-list",
+                not_found_none=True,
+            )
+            if shopping_list is not None or "shopping_list" in data:
+                data["shopping_list"] = shopping_list
+                self._cache["shopping_list"] = shopping_list
+
+            split_list = await _fetch_json_no_cache(
+                session,
+                "/api/shopping-list/split",
+                not_found_none=True,
+            )
+            if split_list is not None or "split_shopping_list" in data:
+                data["split_shopping_list"] = split_list
+                self._cache["split_shopping_list"] = split_list
+
+        if data:
+            self.async_set_updated_data(data)
+
     async def rate_recipe(self, recipe_id: int, rating: int) -> None:
         """Rate a recipe via API.
 
@@ -423,6 +475,10 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         error_text = await response.text()
                         _LOGGER.error("Failed to select recipe: %s", error_text)
                         raise UpdateFailed(f"Failed to select recipe: {error_text}")
+            # Force fresh shopping list fetch for responsive UI updates
+            self._cache.pop("shopping_list", None)
+            self._cache.pop("split_shopping_list", None)
+            await self._refresh_shopping_lists()
             # Refresh coordinator data after selection so UI updates
             await self.async_request_refresh()
         except aiohttp.ClientError as err:
@@ -453,6 +509,10 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         error_text = await response.text()
                         _LOGGER.error("Failed to set recipe URL: %s", error_text)
                         raise UpdateFailed(f"Failed to set recipe URL: {error_text}")
+            # Force fresh shopping list fetch for responsive UI updates
+            self._cache.pop("shopping_list", None)
+            self._cache.pop("split_shopping_list", None)
+            await self._refresh_shopping_lists()
             await self.async_request_refresh()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error setting recipe URL: %s", err)

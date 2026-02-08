@@ -64,12 +64,51 @@ class ShoppingListCard extends HTMLElement {
     } else {
       this._checkedItems.add(itemKey);
     }
-    this.render();
+    const itemEl = this.shadowRoot?.querySelector(`.item[data-item-key="${itemKey}"]`);
+    if (itemEl) {
+      itemEl.classList.toggle('checked', this._checkedItems.has(itemKey));
+      const checkbox = itemEl.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.checked = this._checkedItems.has(itemKey);
+    }
+    this._updateCheckedUi();
   }
 
   _clearChecked() {
     this._checkedItems.clear();
-    this.render();
+    const itemEls = this.shadowRoot?.querySelectorAll('.item.checked');
+    if (itemEls && itemEls.length) {
+      itemEls.forEach((el) => {
+        el.classList.remove('checked');
+        const checkbox = el.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = false;
+      });
+    }
+    this._updateCheckedUi();
+  }
+
+  _updateCheckedUi() {
+    const biolandState = this._hass?.states?.[this._config.bioland_entity];
+    const reweState = this._hass?.states?.[this._config.rewe_entity];
+    const biolandItems = biolandState?.attributes?.items || [];
+    const reweItems = reweState?.attributes?.items || [];
+    const biolandCount = biolandItems.length;
+    const reweCount = reweItems.length;
+    const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
+    const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
+
+    const clearBtn = this.shadowRoot?.querySelector('.action-button.secondary');
+    if (clearBtn) {
+      clearBtn.disabled = this._checkedItems.size === 0;
+      const countEl = clearBtn.querySelector('.clear-count');
+      if (countEl) countEl.textContent = `${this._checkedItems.size}`;
+    }
+
+    const summary = this.shadowRoot?.querySelector('.checked-summary');
+    if (summary) {
+      summary.textContent = this._activeTab === 'bioland'
+        ? `${biolandChecked} von ${biolandCount} abgehakt`
+        : `${reweChecked} von ${reweCount} abgehakt`;
+    }
   }
 
   _renderItem(item, index, store) {
@@ -80,7 +119,7 @@ class ShoppingListCard extends HTMLElement {
     const ingredient = item.ingredient || '';
 
     return `
-      <div class="item ${isChecked ? 'checked' : ''}">
+      <div class="item ${isChecked ? 'checked' : ''}" data-item-key="${itemKey}">
         <input
           type="checkbox"
           ${isChecked ? 'checked' : ''}
@@ -95,6 +134,9 @@ class ShoppingListCard extends HTMLElement {
 
   render() {
     if (!this._hass || !this._config) return;
+
+    const prevListEl = this.shadowRoot?.querySelector('.item-list');
+    const prevScrollTop = prevListEl ? prevListEl.scrollTop : 0;
 
     const biolandState = this._hass.states[this._config.bioland_entity];
     const reweState = this._hass.states[this._config.rewe_entity];
@@ -304,11 +346,11 @@ class ShoppingListCard extends HTMLElement {
               onclick="this.getRootNode().host._clearChecked()"
               ${this._checkedItems.size === 0 ? 'disabled' : ''}
             >
-              Markierungen löschen (${this._checkedItems.size})
+              Markierungen löschen (<span class="clear-count">${this._checkedItems.size}</span>)
             </button>
           </div>
 
-          <div style="margin-top: 12px; font-size: 12px; color: var(--secondary-text-color);">
+          <div class="checked-summary" style="margin-top: 12px; font-size: 12px; color: var(--secondary-text-color);">
             ${this._activeTab === 'bioland'
               ? `${biolandChecked} von ${biolandCount} abgehakt`
               : `${reweChecked} von ${reweCount} abgehakt`
@@ -322,6 +364,13 @@ class ShoppingListCard extends HTMLElement {
         `}
       </ha-card>
     `;
+
+    const newListEl = this.shadowRoot?.querySelector('.item-list');
+    if (newListEl) {
+      requestAnimationFrame(() => {
+        newListEl.scrollTop = prevScrollTop;
+      });
+    }
   }
 }
 
