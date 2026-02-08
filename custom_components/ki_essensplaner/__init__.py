@@ -1,5 +1,7 @@
 """KI-Essensplaner integration for Home Assistant."""
 
+import logging
+
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -9,6 +11,8 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import CONF_API_TOKEN, CONF_API_URL, DOMAIN
 from .coordinator import EssensplanerCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -174,6 +178,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         slot = call.data["slot"]
         recipe_index = call.data["recipe_index"]
 
+        _LOGGER.info(
+            "select_recipe service called: %s %s index=%s",
+            weekday,
+            slot,
+            recipe_index,
+        )
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.select_recipe(weekday, slot, recipe_index)
         await coordinator.refresh_shopping_lists()
@@ -196,6 +206,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         slot = call.data["slot"]
         recipe_url = call.data["recipe_url"]
 
+        _LOGGER.info(
+            "set_recipe_url service called: %s %s url=%s",
+            weekday,
+            slot,
+            recipe_url,
+        )
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.set_recipe_url(weekday, slot, recipe_url)
         await coordinator.refresh_shopping_lists()

@@ -255,6 +255,10 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "/api/shopping-list",
                 not_found_none=True,
             )
+            _LOGGER.info(
+                "Shopping list refresh: items=%s",
+                None if shopping_list is None else len(shopping_list.get("items", [])),
+            )
             if shopping_list is not None or "shopping_list" in data:
                 data["shopping_list"] = shopping_list
                 self._cache["shopping_list"] = shopping_list
@@ -263,6 +267,11 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 session,
                 "/api/shopping-list/split",
                 not_found_none=True,
+            )
+            _LOGGER.info(
+                "Split shopping list refresh: bioland=%s rewe=%s",
+                None if split_list is None else len(split_list.get("bioland", [])),
+                None if split_list is None else len(split_list.get("rewe", [])),
             )
             if split_list is not None or "split_shopping_list" in data:
                 data["split_shopping_list"] = split_list
