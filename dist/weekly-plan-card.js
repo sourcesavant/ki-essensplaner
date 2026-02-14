@@ -13,6 +13,11 @@ class WeeklyPlanCard extends HTMLElement {
     this._config = null;
     this._isGenerating = false;
     this._lastGeneratedAt = null;
+    this._isScrolling = false;
+    this._pendingRender = false;
+    this._scrollListenerAttached = false;
+    this._scrollTimeout = null;
+    this._savedScrollPosition = 0;
   }
 
   setConfig(config) {
@@ -26,6 +31,13 @@ class WeeklyPlanCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+
+    // Don't render while scrolling
+    if (this._isScrolling) {
+      this._pendingRender = true;
+      return;
+    }
+
     this.render();
   }
 
@@ -223,6 +235,12 @@ class WeeklyPlanCard extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
 
+    // Save current scroll position before re-rendering
+    const weekGrid = this.shadowRoot.querySelector('.week-grid');
+    if (weekGrid) {
+      this._savedScrollPosition = weekGrid.scrollLeft;
+    }
+
     const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
     const slots = ['Mittagessen', 'Abendessen'];
 
@@ -317,7 +335,11 @@ class WeeklyPlanCard extends HTMLElement {
           grid-template-columns: repeat(7, minmax(160px, 1fr));
           gap: 8px;
           overflow-x: auto;
+          overscroll-behavior-x: contain;
+          scroll-behavior: auto;
+          -webkit-overflow-scrolling: touch;
           padding-bottom: 4px;
+          will-change: scroll-position;
         }
         .day-column {
           display: flex;
@@ -499,6 +521,46 @@ class WeeklyPlanCard extends HTMLElement {
         `}
       </ha-card>
     `;
+
+    // Attach scroll listener to the new element (re-attached on each render)
+    setTimeout(() => {
+      const weekGrid = this.shadowRoot.querySelector('.week-grid');
+      if (weekGrid) {
+        // Remove old listener if exists (cleanup)
+        if (this._scrollHandler) {
+          weekGrid.removeEventListener('scroll', this._scrollHandler);
+        }
+
+        // Create new scroll handler
+        this._scrollHandler = () => {
+          this._isScrolling = true;
+
+          // Clear previous timeout
+          if (this._scrollTimeout) {
+            clearTimeout(this._scrollTimeout);
+          }
+
+          // Set a new timeout to detect when scrolling stops
+          this._scrollTimeout = setTimeout(() => {
+            this._isScrolling = false;
+
+            // Render if there was a pending render
+            if (this._pendingRender) {
+              this._pendingRender = false;
+              this.render();
+            }
+          }, 3000); // Wait 3 seconds after last scroll event to allow user to scroll again
+        };
+
+        // Attach to new element
+        weekGrid.addEventListener('scroll', this._scrollHandler, { passive: true });
+
+        // Restore saved scroll position
+        if (this._savedScrollPosition > 0) {
+          weekGrid.scrollLeft = this._savedScrollPosition;
+        }
+      }
+    }, 0);
   }
 }
 
