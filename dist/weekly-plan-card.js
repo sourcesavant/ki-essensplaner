@@ -18,6 +18,7 @@ class WeeklyPlanCard extends HTMLElement {
     this._scrollListenerAttached = false;
     this._scrollTimeout = null;
     this._savedScrollPosition = 0;
+    this._isRestoringScroll = false;
   }
 
   setConfig(config) {
@@ -30,7 +31,13 @@ class WeeklyPlanCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const oldHass = this._hass;
     this._hass = hass;
+
+    // Check if relevant entities changed
+    if (oldHass && !this._hasRelevantChanges(oldHass, hass)) {
+      return; // Nothing changed, no need to render
+    }
 
     // Don't render while scrolling
     if (this._isScrolling) {
@@ -39,6 +46,34 @@ class WeeklyPlanCard extends HTMLElement {
     }
 
     this.render();
+  }
+
+  _hasRelevantChanges(oldHass, newHass) {
+    if (!this._config?.entity) return true;
+
+    // Check if status entity changed
+    const oldStatus = oldHass.states[this._config.entity];
+    const newStatus = newHass.states[this._config.entity];
+    if (JSON.stringify(oldStatus) !== JSON.stringify(newStatus)) {
+      return true;
+    }
+
+    // Check if any meal slot entities changed
+    const weekdays = ['montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag'];
+    const slots = ['mittagessen', 'abendessen'];
+
+    for (const day of weekdays) {
+      for (const slot of slots) {
+        const entityId = `${this._entityPrefix}${day}_${slot}`;
+        const oldState = oldHass.states[entityId];
+        const newState = newHass.states[entityId];
+        if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
+          return true;
+        }
+      }
+    }
+
+    return false; // No relevant changes
   }
 
   getCardSize() {
@@ -533,6 +568,11 @@ class WeeklyPlanCard extends HTMLElement {
 
         // Create new scroll handler
         this._scrollHandler = () => {
+          // Ignore programmatic scrolls (from restoring position)
+          if (this._isRestoringScroll) {
+            return;
+          }
+
           this._isScrolling = true;
 
           // Clear previous timeout
@@ -555,9 +595,14 @@ class WeeklyPlanCard extends HTMLElement {
         // Attach to new element
         weekGrid.addEventListener('scroll', this._scrollHandler, { passive: true });
 
-        // Restore saved scroll position
+        // Restore saved scroll position (set flag to ignore the scroll event)
         if (this._savedScrollPosition > 0) {
+          this._isRestoringScroll = true;
           weekGrid.scrollLeft = this._savedScrollPosition;
+          // Reset flag after a short delay to allow the scroll event to be ignored
+          setTimeout(() => {
+            this._isRestoringScroll = false;
+          }, 50);
         }
       }
     }, 0);
