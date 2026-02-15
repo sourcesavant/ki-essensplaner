@@ -449,9 +449,14 @@ class WeeklyRecommendation:
 
 
 def _get_week_start() -> date:
-    """Get the Monday of the current week."""
+    """Get the Saturday of the next week (or current week if today is Saturday)."""
     today = date.today()
-    return today - __import__("datetime").timedelta(days=today.weekday())
+    # Saturday = 5 in weekday (0=Monday, 6=Sunday)
+    days_until_saturday = (5 - today.weekday()) % 7
+    # If today is Saturday, use next Saturday (7 days from now)
+    if days_until_saturday == 0:
+        days_until_saturday = 7
+    return today + __import__("datetime").timedelta(days=days_until_saturday)
 
 
 def save_weekly_plan(plan: WeeklyRecommendation, path: Path | None = None) -> Path:

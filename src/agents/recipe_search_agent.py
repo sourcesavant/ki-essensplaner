@@ -470,11 +470,15 @@ def _assign_recipes_to_slots(
 
 
 def _recipe_key(recipe: ScoredRecipe) -> tuple[str, str | int] | None:
-    """Build a stable key to detect duplicate recipes across slots."""
-    if recipe.recipe_id is not None:
-        return ("id", recipe.recipe_id)
+    """Build a stable key to detect duplicate recipes across slots.
+
+    Uses URL as primary key to ensure consistency across new and saved recipes.
+    Falls back to recipe_id if no URL, then title.
+    """
     if recipe.url:
         return ("url", recipe.url)
+    if recipe.recipe_id is not None:
+        return ("id", recipe.recipe_id)
     if recipe.title:
         return ("title", recipe.title)
     return None
