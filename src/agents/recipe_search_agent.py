@@ -485,18 +485,21 @@ def _recipe_key(recipe: ScoredRecipe) -> tuple[str, str | int] | None:
 
 
 def _get_last_plan_recipe_keys(plan: WeeklyRecommendation | None) -> set[tuple[str, str | int]]:
-    """Collect recipe keys from a previous plan for exclusion."""
+    """Collect recipe keys from a previous plan for exclusion.
+
+    Excludes ALL recommendations from the previous plan (not just selected ones)
+    to ensure variety across weeks.
+    """
     if not plan:
         return set()
 
     keys: set[tuple[str, str | int]] = set()
     for slot in plan.slots:
-        recipe = plan.get_recipe_for_slot(slot.weekday, slot.slot)
-        if not recipe:
-            continue
-        key = _recipe_key(recipe)
-        if key is not None:
-            keys.add(key)
+        # Exclude all recommendations from this slot, not just the selected one
+        for recipe in slot.recommendations:
+            key = _recipe_key(recipe)
+            if key is not None:
+                keys.add(key)
     return keys
 
 
