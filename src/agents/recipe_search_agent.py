@@ -581,12 +581,16 @@ def run_search_agent(
     *,
     multi_day_preferences: list[dict] | None = None,
     skipped_slots: list[dict] | None = None,
+    exclude_recipe_urls: list[str] | None = None,
 ) -> WeeklyRecommendation:
     """Run the recipe search agent.
 
     Args:
         target_day: Specific weekday to generate for (e.g., "Mittwoch"), or None for full week
         target_slot: Specific slot to generate for (e.g., "Abendessen"), or None for all
+        multi_day_preferences: Optional multi-day meal prep configurations
+        skipped_slots: Optional list of slots to skip during generation
+        exclude_recipe_urls: Optional list of recipe URLs to exclude (e.g., from previous week)
 
     Returns:
         WeeklyRecommendation with top 5 recipes per slot
@@ -676,8 +680,17 @@ def run_search_agent(
         all_slots, favorites, new_recipes, context
     )
 
-    last_plan = load_weekly_plan()
-    banned_keys = _get_last_plan_recipe_keys(last_plan)
+    # Build banned keys from previous plan (if provided) or by loading saved plan
+    if exclude_recipe_urls:
+        # Use explicitly provided exclusion list (from API)
+        banned_keys = {("url", url) for url in exclude_recipe_urls}
+        print(f"\n   Excluding {len(banned_keys)} recipes from previous week")
+    else:
+        # Fallback: load previous plan from disk (for backward compatibility)
+        last_plan = load_weekly_plan()
+        banned_keys = _get_last_plan_recipe_keys(last_plan)
+        print(f"\n   Loaded {len(banned_keys)} banned recipes from previous plan")
+
     group_id_by_slot, planned_reuse_slots = _build_multi_day_maps(multi_day_preferences)
     _select_unique_recipes(
         slot_recommendations,

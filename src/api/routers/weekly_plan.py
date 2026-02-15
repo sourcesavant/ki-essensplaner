@@ -176,15 +176,21 @@ def _build_meal_plan(plan: WeeklyRecommendation) -> tuple[MealPlanCreate, int, i
     return meal_plan, len(meals), skipped
 
 
-def _generate_plan_sync() -> None:
-    """Synchronous wrapper for plan generation (runs in background)."""
+def _generate_plan_sync(exclude_recipes: list[str] | None = None) -> None:
+    """Synchronous wrapper for plan generation (runs in background).
+
+    Args:
+        exclude_recipes: Optional list of recipe URLs to exclude from the new plan
+    """
     try:
         print("[API] Starting weekly plan generation...")
+        print(f"[API] Excluding {len(exclude_recipes or [])} recipes from previous week")
         preferences = get_multi_day_preferences()
         skipped = get_skipped_slots()
         plan = run_search_agent(
             multi_day_preferences=preferences,
             skipped_slots=skipped,
+            exclude_recipe_urls=exclude_recipes,
         )
         save_weekly_plan(plan)
         print(f"[API] Weekly plan generated successfully: {len(plan.slots)} slots")
@@ -276,12 +282,25 @@ def complete_weekly_plan(
     meal_plan, meals_written, skipped = _build_meal_plan(plan)
     upsert_meal_plan(meal_plan)
 
+    # Collect recipe URLs to exclude from next plan (all recommendations, not just selected)
+    exclude_recipes: list[str] = []
+    for slot in plan.slots:
+        for recipe in slot.recommendations:
+            if recipe.url:
+                exclude_recipes.append(recipe.url)
+
     if not plan.completed_at:
         plan.completed_at = datetime.now().isoformat()
-        save_weekly_plan(plan)
 
     if request.generate_next:
-        background_tasks.add_task(_generate_plan_sync)
+        # Delete old plan before generating new one to avoid confusion
+        from src.agents.models import WEEKLY_PLAN_FILE
+        if WEEKLY_PLAN_FILE.exists():
+            WEEKLY_PLAN_FILE.unlink()
+            print(f"[API] Deleted old plan, excluded {len(exclude_recipes)} recipes")
+
+        # Start background task with explicit exclusion list
+        background_tasks.add_task(_generate_plan_sync, exclude_recipes)
 
     return CompleteWeeklyPlanResponse(
         success=True,
