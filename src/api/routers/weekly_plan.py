@@ -293,11 +293,17 @@ def complete_weekly_plan(
         plan.completed_at = datetime.now().isoformat()
 
     if request.generate_next:
-        # Delete old plan before generating new one to avoid confusion
+        # Archive old plan before generating new one
         from src.agents.models import WEEKLY_PLAN_FILE
         if WEEKLY_PLAN_FILE.exists():
+            # Save completed plan with timestamp for archive
+            archive_name = f"weekly_plan_{plan.week_start}_completed.json"
+            archive_path = WEEKLY_PLAN_FILE.parent / archive_name
+            save_weekly_plan(plan, archive_path)
+            print(f"[API] Archived old plan to {archive_name}, excluded {len(exclude_recipes)} recipes")
+
+            # Delete current plan so new one can be created cleanly
             WEEKLY_PLAN_FILE.unlink()
-            print(f"[API] Deleted old plan, excluded {len(exclude_recipes)} recipes")
 
         # Start background task with explicit exclusion list
         background_tasks.add_task(_generate_plan_sync, exclude_recipes)
