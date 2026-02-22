@@ -17,6 +17,7 @@ Example usage:
 
 import time
 from collections import defaultdict
+from dataclasses import replace
 
 from src.agents.models import (
     MEAL_SLOTS,
@@ -36,6 +37,7 @@ from src.core.database import (
     get_blacklisted_recipe_ids,
     get_connection,
     get_excluded_ingredients,
+    get_recent_ha_week_recipe_history,
     get_recipe,
 )
 from src.models.recipe import Recipe
@@ -55,6 +57,12 @@ RECOMMENDATIONS_PER_SLOT = 5
 
 # Maximum new recipes to fetch details for (per search)
 MAX_DETAIL_FETCH = 10
+
+# Rotation defaults (can be overridden via user config rotation_policy)
+DEFAULT_NO_REPEAT_WEEKS = 1
+DEFAULT_FAVORITE_MIN_RETURN_WEEKS = 3
+DEFAULT_FAVORITE_RETURN_BONUS_PER_WEEK = 2.0
+DEFAULT_FAVORITE_RETURN_BONUS_MAX = 10.0
 
 
 def _get_favorites_from_db() -> list[tuple[Recipe, int]]:
@@ -484,22 +492,142 @@ def _recipe_key(recipe: ScoredRecipe) -> tuple[str, str | int] | None:
     return None
 
 
+def _normalize_rotation_policy(policy: dict | None) -> dict[str, float | int]:
+    """Normalize rotation policy with safe defaults."""
+    raw = policy or {}
+    try:
+        no_repeat_weeks = int(raw.get("no_repeat_weeks", DEFAULT_NO_REPEAT_WEEKS))
+    except (TypeError, ValueError):
+        no_repeat_weeks = DEFAULT_NO_REPEAT_WEEKS
+
+    try:
+        favorite_min_return = int(
+            raw.get("favorite_min_return_weeks", DEFAULT_FAVORITE_MIN_RETURN_WEEKS)
+        )
+    except (TypeError, ValueError):
+        favorite_min_return = DEFAULT_FAVORITE_MIN_RETURN_WEEKS
+
+    try:
+        bonus_per_week = float(
+            raw.get("favorite_return_bonus_per_week", DEFAULT_FAVORITE_RETURN_BONUS_PER_WEEK)
+        )
+    except (TypeError, ValueError):
+        bonus_per_week = DEFAULT_FAVORITE_RETURN_BONUS_PER_WEEK
+
+    try:
+        bonus_max = float(raw.get("favorite_return_bonus_max", DEFAULT_FAVORITE_RETURN_BONUS_MAX))
+    except (TypeError, ValueError):
+        bonus_max = DEFAULT_FAVORITE_RETURN_BONUS_MAX
+
+    return {
+        "no_repeat_weeks": max(0, no_repeat_weeks),
+        "favorite_min_return_weeks": max(0, favorite_min_return),
+        "favorite_return_bonus_per_week": max(0.0, bonus_per_week),
+        "favorite_return_bonus_max": max(0.0, bonus_max),
+    }
+
+
+def _build_recipe_recency_map(week_history: list[dict]) -> dict[tuple[str, str | int], int]:
+    """Build recipe key -> weeks_since_last_seen map from recent completed weeks.
+
+    Most recent completed week has value 1.
+    """
+    recency: dict[tuple[str, str | int], int] = {}
+    for idx, week in enumerate(week_history):
+        weeks_since = idx + 1
+        for recipe in week.get("recipes", []):
+            url = recipe.get("url")
+            recipe_id = recipe.get("recipe_id")
+            title = recipe.get("title")
+
+            key: tuple[str, str | int] | None = None
+            if url:
+                key = ("url", url)
+            elif recipe_id is not None:
+                key = ("id", recipe_id)
+            elif title:
+                key = ("title", title)
+
+            if key is None or key in recency:
+                continue
+            recency[key] = weeks_since
+    return recency
+
+
+def _filter_new_recipes_by_rotation(
+    recipes: list[ScoredRecipe],
+    recency_map: dict[tuple[str, str | int], int],
+    no_repeat_weeks: int,
+) -> list[ScoredRecipe]:
+    """Filter new recipes using hard no-repeat window."""
+    filtered: list[ScoredRecipe] = []
+    for recipe in recipes:
+        key = _recipe_key(recipe)
+        weeks_since = recency_map.get(key) if key else None
+        if weeks_since is not None and weeks_since <= no_repeat_weeks:
+            continue
+        filtered.append(recipe)
+    return filtered
+
+
+def _filter_and_boost_favorites_by_rotation(
+    favorites: list[ScoredRecipe],
+    recency_map: dict[tuple[str, str | int], int],
+    no_repeat_weeks: int,
+    favorite_min_return_weeks: int,
+    bonus_per_week: float,
+    bonus_max: float,
+) -> list[ScoredRecipe]:
+    """Apply cooldown and comeback bonus to favorites.
+
+    Rules:
+    - Never repeat inside no_repeat_weeks.
+    - Favorites can return only after favorite_min_return_weeks.
+    - Older favorites get a score bonus to reintroduce proven dishes regularly.
+    """
+    boosted: list[ScoredRecipe] = []
+    for favorite in favorites:
+        key = _recipe_key(favorite)
+        weeks_since = recency_map.get(key) if key else None
+
+        if weeks_since is not None and weeks_since <= no_repeat_weeks:
+            continue
+        if weeks_since is not None and weeks_since < favorite_min_return_weeks:
+            continue
+
+        score_bonus = 0.0
+        reasoning = favorite.reasoning
+        if weeks_since is not None and favorite_min_return_weeks > 0:
+            eligible_gap = max(0, weeks_since - favorite_min_return_weeks + 1)
+            score_bonus = min(bonus_max, eligible_gap * bonus_per_week)
+            if score_bonus > 0:
+                reasoning = f"{reasoning} Rotation: zuletzt vor {weeks_since} Wochen gekocht."
+
+        boosted.append(
+            replace(
+                favorite,
+                score=min(100.0, favorite.score + score_bonus),
+                reasoning=reasoning,
+            )
+        )
+
+    boosted.sort(key=lambda x: x.score, reverse=True)
+    return boosted
+
+
 def _get_last_plan_recipe_keys(plan: WeeklyRecommendation | None) -> set[tuple[str, str | int]]:
     """Collect recipe keys from a previous plan for exclusion.
 
-    Excludes ALL recommendations from the previous plan (not just selected ones)
-    to ensure variety across weeks.
+    Uses selected recipes only. Alternatives from the previous week are not banned.
     """
     if not plan:
         return set()
 
     keys: set[tuple[str, str | int]] = set()
-    for slot in plan.slots:
-        # Exclude all recommendations from this slot, not just the selected one
-        for recipe in slot.recommendations:
-            key = _recipe_key(recipe)
-            if key is not None:
-                keys.add(key)
+    for _, _, recipe in plan.get_selected_recipes():
+        key = _recipe_key(recipe)
+        if key is not None:
+            keys.add(key)
     return keys
 
 
@@ -545,7 +673,7 @@ def _select_unique_recipes(
         if slot_key in planned_reuse_slots:
             continue
 
-        chosen_index = 0
+        chosen_index = -1
         found_allowed = False
         for idx, recipe in enumerate(slot_rec.recommendations):
             key = _recipe_key(recipe)
@@ -567,12 +695,38 @@ def _select_unique_recipes(
                     found_allowed = True
                     break
 
+        if not found_allowed:
+            # Keep a safe fallback: any non-banned recommendation.
+            for idx, recipe in enumerate(slot_rec.recommendations):
+                key = _recipe_key(recipe)
+                if key is None or key in banned_keys:
+                    continue
+                chosen_index = idx
+                found_allowed = True
+                break
+
         slot_rec.selected_index = chosen_index
         if slot_rec.recommendations and found_allowed:
             chosen = slot_rec.recommendations[chosen_index]
             chosen_key = _recipe_key(chosen)
             if chosen_key is not None:
                 used_by_key.setdefault(chosen_key, []).append(slot_key)
+
+
+def _filter_slot_recommendations_by_banned_keys(
+    recommendations: list[SlotRecommendation],
+    banned_keys: set[tuple[str, str | int]],
+) -> None:
+    """Remove banned recipes from slot recommendation lists."""
+    if not banned_keys:
+        return
+
+    for slot_rec in recommendations:
+        slot_rec.recommendations = [
+            recipe
+            for recipe in slot_rec.recommendations
+            if (_recipe_key(recipe) not in banned_keys)
+        ]
 
 
 def run_search_agent(
@@ -582,6 +736,7 @@ def run_search_agent(
     multi_day_preferences: list[dict] | None = None,
     skipped_slots: list[dict] | None = None,
     exclude_recipe_urls: list[str] | None = None,
+    rotation_policy: dict | None = None,
 ) -> WeeklyRecommendation:
     """Run the recipe search agent.
 
@@ -591,6 +746,7 @@ def run_search_agent(
         multi_day_preferences: Optional multi-day meal prep configurations
         skipped_slots: Optional list of slots to skip during generation
         exclude_recipe_urls: Optional list of recipe URLs to exclude (e.g., from previous week)
+        rotation_policy: Optional rotation config overrides
 
     Returns:
         WeeklyRecommendation with top 5 recipes per slot
@@ -625,6 +781,19 @@ def run_search_agent(
     excluded = get_excluded_ingredients()
     print(f"   {len(excluded)} excluded ingredients")
 
+    # Load rotation history
+    rotation = _normalize_rotation_policy(rotation_policy)
+    week_history = get_recent_ha_week_recipe_history(
+        max(rotation["favorite_min_return_weeks"], rotation["no_repeat_weeks"], 1) + 8
+    )
+    recency_map = _build_recipe_recency_map(week_history)
+    print(
+        "   Rotation policy:"
+        f" no_repeat_weeks={rotation['no_repeat_weeks']},"
+        f" favorite_min_return_weeks={rotation['favorite_min_return_weeks']}"
+    )
+    print(f"   Rotation history loaded: {len(week_history)} weeks, {len(recency_map)} recipes")
+
     # Create scoring context
     context = ScoringContext(
         weekday=target_day or "Montag",  # Default for scoring
@@ -656,6 +825,14 @@ def run_search_agent(
     print(f"   {len(favorites_raw)} recipes found in DB")
 
     favorites = _score_favorites(favorites_raw, context)
+    favorites = _filter_and_boost_favorites_by_rotation(
+        favorites,
+        recency_map,
+        no_repeat_weeks=rotation["no_repeat_weeks"],
+        favorite_min_return_weeks=rotation["favorite_min_return_weeks"],
+        bonus_per_week=rotation["favorite_return_bonus_per_week"],
+        bonus_max=rotation["favorite_return_bonus_max"],
+    )
     print(f"   {len(favorites)} viable favorites after filtering")
 
     # Build search queries
@@ -672,6 +849,11 @@ def run_search_agent(
     # Load details for top candidates
     print("\n9. Loading details for top candidates...")
     new_recipes = _load_recipe_details(new_recipes_raw, context)
+    new_recipes = _filter_new_recipes_by_rotation(
+        new_recipes,
+        recency_map,
+        no_repeat_weeks=rotation["no_repeat_weeks"],
+    )
     print(f"   {len(new_recipes)} viable new recipes")
 
     # Assign recipes to slots
@@ -692,6 +874,7 @@ def run_search_agent(
         print(f"\n   Loaded {len(banned_keys)} banned recipes from previous plan")
 
     group_id_by_slot, planned_reuse_slots = _build_multi_day_maps(multi_day_preferences)
+    _filter_slot_recommendations_by_banned_keys(slot_recommendations, banned_keys)
     _select_unique_recipes(
         slot_recommendations,
         group_id_by_slot,

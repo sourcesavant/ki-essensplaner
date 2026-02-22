@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import shutil
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Generator
@@ -443,6 +444,72 @@ def get_ha_week_meals(week_start: date) -> dict | None:
             "completed_at": plan_row["parsed_at"],
             "meals": meals,
         }
+
+
+def get_recent_ha_week_recipe_history(limit_weeks: int = 8) -> list[dict]:
+    """Get cooked recipes grouped by recent Home Assistant weeks.
+
+    Args:
+        limit_weeks: Number of recent weeks to inspect (1-52)
+
+    Returns:
+        List ordered by week_start DESC:
+        [
+            {
+                "week_start": "YYYY-MM-DD",
+                "recipes": [
+                    {"recipe_id": 1, "url": "...", "title": "..."},
+                    ...
+                ],
+            },
+            ...
+        ]
+    """
+    normalized_limit = max(1, min(limit_weeks, 52))
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            WITH recent_weeks AS (
+                SELECT id, week_start
+                FROM meal_plans
+                WHERE onenote_page_id LIKE 'ha-week-%'
+                  AND week_start IS NOT NULL
+                ORDER BY week_start DESC
+                LIMIT ?
+            )
+            SELECT
+                rw.week_start,
+                m.recipe_id,
+                r.source_url,
+                COALESCE(r.title, m.recipe_title) AS title
+            FROM recent_weeks rw
+            JOIN meals m ON m.meal_plan_id = rw.id
+            LEFT JOIN recipes r ON r.id = m.recipe_id
+            ORDER BY rw.week_start DESC, m.day_of_week ASC, m.slot ASC
+            """,
+            (normalized_limit,),
+        ).fetchall()
+
+    recipes_by_week: dict[str, list[dict]] = defaultdict(list)
+    seen_by_week: dict[str, set[tuple[int | None, str | None, str | None]]] = defaultdict(set)
+
+    for row in rows:
+        week_start = row["week_start"]
+        key = (row["recipe_id"], row["source_url"], row["title"])
+        if key in seen_by_week[week_start]:
+            continue
+        seen_by_week[week_start].add(key)
+        recipes_by_week[week_start].append(
+            {
+                "recipe_id": row["recipe_id"],
+                "url": row["source_url"],
+                "title": row["title"],
+            }
+        )
+
+    weeks = sorted(recipes_by_week.keys(), reverse=True)
+    return [{"week_start": week, "recipes": recipes_by_week[week]} for week in weeks]
 
 
 def upsert_meal_plan(meal_plan: MealPlanCreate) -> MealPlan:

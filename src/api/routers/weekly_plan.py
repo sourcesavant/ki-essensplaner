@@ -37,6 +37,7 @@ from src.api.schemas.weekly_plan import (
 )
 from src.core.user_config import (
     get_multi_day_preferences,
+    get_rotation_policy,
     get_skipped_slots,
     set_multi_day_preferences,
     set_skipped_slots,
@@ -271,10 +272,12 @@ def _generate_plan_sync(exclude_recipes: list[str] | None = None) -> None:
         print(f"[API] Excluding {len(exclude_recipes or [])} recipes from previous week")
         preferences = get_multi_day_preferences()
         skipped = get_skipped_slots()
+        rotation_policy = get_rotation_policy()
         plan = run_search_agent(
             multi_day_preferences=preferences,
             skipped_slots=skipped,
             exclude_recipe_urls=exclude_recipes,
+            rotation_policy=rotation_policy,
         )
         save_weekly_plan(plan)
         print(f"[API] Weekly plan generated successfully: {len(plan.slots)} slots")
@@ -411,12 +414,11 @@ def complete_weekly_plan(
     meal_plan, meals_written, skipped = _build_meal_plan(plan)
     upsert_meal_plan(meal_plan)
 
-    # Collect recipe URLs to exclude from next plan (all recommendations, not just selected)
+    # Collect selected recipe URLs for strict "no consecutive week" exclusion.
     exclude_recipes: list[str] = []
-    for slot in plan.slots:
-        for recipe in slot.recommendations:
-            if recipe.url:
-                exclude_recipes.append(recipe.url)
+    for _, _, recipe in plan.get_selected_recipes():
+        if recipe.url:
+            exclude_recipes.append(recipe.url)
 
     if not plan.completed_at:
         plan.completed_at = datetime.now().isoformat()

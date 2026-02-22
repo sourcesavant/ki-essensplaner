@@ -28,6 +28,33 @@ Tragen Sie diesen Token in der Add-on Konfiguration ein.
 
 Falls Sie die GPT-basierte Zutaten-Normalisierung nutzen möchten, tragen Sie Ihren OpenAI API Key ein.
 
+### Rezept-Rotation (Wochenplan)
+
+Der Wochenplan nutzt eine Rotationslogik, damit Gerichte nicht direkt in Folgewochen erscheinen, bewährte Favoriten aber regelmäßig zurückkommen.
+
+Standardwerte:
+- `no_repeat_weeks`: `1` (ein Gericht aus der letzten Woche wird in der Folgewoche nicht erneut vorgeschlagen)
+- `favorite_min_return_weeks`: `3` (Favoriten kommen frühestens nach 3 Wochen zurück)
+- `favorite_return_bonus_per_week`: `2.0` (Score-Bonus pro zusätzlicher Woche Wartezeit)
+- `favorite_return_bonus_max`: `10.0` (maximaler Bonus)
+
+Die Werte können in `data/local/config.json` unter `rotation_policy` überschrieben werden:
+
+```json
+{
+  "rotation_policy": {
+    "no_repeat_weeks": 1,
+    "favorite_min_return_weeks": 3,
+    "favorite_return_bonus_per_week": 2.0,
+    "favorite_return_bonus_max": 10.0
+  }
+}
+```
+
+Hinweis:
+- Für die Rotation werden nur tatsächlich gekochte/ausgewählte Gerichte aus abgeschlossenen Wochen berücksichtigt.
+- Alternative Vorschläge aus der Vorwoche werden nicht pauschal blockiert.
+
 ### Azure App Registration (für OneNote Import)
 
 Für den OneNote-Import benötigen Sie eine Azure App Registration:
@@ -54,6 +81,8 @@ Nach der Registrierung:
 | Endpoint | Methode | Auth | Beschreibung |
 |----------|---------|------|--------------|
 | `/api/health` | GET | Nein | Health-Check und Datenstatus |
+| `/api/config` | GET | Ja | Aktuelle Konfiguration inkl. Rotation |
+| `/api/config` | PUT | Ja | Konfiguration (Haushalt/Rotation) aktualisieren |
 | `/api/profile` | GET | Ja | Aktuelles Vorlieben-Profil |
 | `/api/profile/refresh` | POST | Ja | Profil neu generieren |
 | `/api/bioland/products` | GET | Ja | Verfügbare Bioland-Produkte |
@@ -115,6 +144,26 @@ curl http://homeassistant.local:8099/api/health
 ### Profil abrufen
 ```bash
 curl -H "Authorization: Bearer <TOKEN>" http://homeassistant.local:8099/api/profile
+```
+
+### Konfiguration abrufen
+```bash
+curl -H "Authorization: Bearer <TOKEN>" http://homeassistant.local:8099/api/config
+```
+
+### Rotation konfigurieren
+```bash
+curl -X PUT -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rotation_policy": {
+      "no_repeat_weeks": 1,
+      "favorite_min_return_weeks": 3,
+      "favorite_return_bonus_per_week": 2.0,
+      "favorite_return_bonus_max": 10.0
+    }
+  }' \
+  http://homeassistant.local:8099/api/config
 ```
 
 ### Saisonale Zutaten für Februar

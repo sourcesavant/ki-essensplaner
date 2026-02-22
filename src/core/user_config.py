@@ -21,6 +21,47 @@ from src.core.config import LOCAL_DIR
 
 CONFIG_PATH = LOCAL_DIR / "config.json"
 DEFAULT_HOUSEHOLD_SIZE = 2
+DEFAULT_ROTATION_POLICY = {
+    "no_repeat_weeks": 1,
+    "favorite_min_return_weeks": 3,
+    "favorite_return_bonus_per_week": 2.0,
+    "favorite_return_bonus_max": 10.0,
+}
+
+
+def _normalize_rotation_policy(policy: dict | None) -> dict:
+    """Normalize a rotation policy dict with defaults and bounds."""
+    raw = policy if isinstance(policy, dict) else {}
+
+    merged = dict(DEFAULT_ROTATION_POLICY)
+    merged.update(raw)
+
+    try:
+        no_repeat_weeks = int(merged["no_repeat_weeks"])
+    except (TypeError, ValueError):
+        no_repeat_weeks = DEFAULT_ROTATION_POLICY["no_repeat_weeks"]
+
+    try:
+        favorite_min_return_weeks = int(merged["favorite_min_return_weeks"])
+    except (TypeError, ValueError):
+        favorite_min_return_weeks = DEFAULT_ROTATION_POLICY["favorite_min_return_weeks"]
+
+    try:
+        bonus_per_week = float(merged["favorite_return_bonus_per_week"])
+    except (TypeError, ValueError):
+        bonus_per_week = DEFAULT_ROTATION_POLICY["favorite_return_bonus_per_week"]
+
+    try:
+        bonus_max = float(merged["favorite_return_bonus_max"])
+    except (TypeError, ValueError):
+        bonus_max = DEFAULT_ROTATION_POLICY["favorite_return_bonus_max"]
+
+    return {
+        "no_repeat_weeks": max(0, no_repeat_weeks),
+        "favorite_min_return_weeks": max(0, favorite_min_return_weeks),
+        "favorite_return_bonus_per_week": max(0.0, bonus_per_week),
+        "favorite_return_bonus_max": max(0.0, bonus_max),
+    }
 
 
 def load_config() -> dict:
@@ -59,6 +100,16 @@ def get_household_size() -> int:
         Number of people in household (1-10)
     """
     return load_config().get("household_size", DEFAULT_HOUSEHOLD_SIZE)
+
+
+def get_rotation_policy() -> dict:
+    """Get recipe rotation policy for weekly plan generation.
+
+    Returns:
+        Dict with validated numeric rotation settings.
+    """
+    config = load_config()
+    return _normalize_rotation_policy(config.get("rotation_policy"))
 
 
 def get_multi_day_preferences() -> list[dict]:
@@ -122,3 +173,19 @@ def set_household_size(size: int) -> None:
     config = load_config()
     config["household_size"] = size
     save_config(config)
+
+
+def set_rotation_policy(policy: dict) -> dict:
+    """Set recipe rotation policy and return normalized values.
+
+    Args:
+        policy: Partial or complete rotation policy
+
+    Returns:
+        Normalized rotation policy that was persisted
+    """
+    normalized = _normalize_rotation_policy(policy)
+    config = load_config()
+    config["rotation_policy"] = normalized
+    save_config(config)
+    return normalized
