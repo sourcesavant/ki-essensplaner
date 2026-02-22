@@ -353,19 +353,24 @@ def get_all_meal_plans() -> list[MealPlan]:
 
 
 def get_completed_ha_weeks(limit: int = 12) -> list[dict]:
-    """Get completed Home Assistant weeks for history browsing."""
+    """Get completed weeks for history browsing.
+
+    Prefers Home-Assistant-generated weeks (ha-week-*) but also includes
+    legacy rows with matching week_start so older data remains browseable.
+    """
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT
                 mp.week_start,
-                mp.parsed_at AS completed_at,
+                MAX(mp.parsed_at) AS completed_at,
                 COUNT(m.id) AS meals_count
             FROM meal_plans mp
             LEFT JOIN meals m ON m.meal_plan_id = mp.id
-            WHERE mp.onenote_page_id LIKE 'ha-week-%'
-              AND mp.week_start IS NOT NULL
-            GROUP BY mp.id
+            WHERE mp.week_start IS NOT NULL
+              AND DATE(mp.week_start) <= DATE('now', '+7 day')
+            GROUP BY mp.week_start
+            HAVING COUNT(m.id) > 0
             ORDER BY mp.week_start DESC
             LIMIT ?
             """,
@@ -382,17 +387,24 @@ def get_completed_ha_weeks(limit: int = 12) -> list[dict]:
 
 
 def get_ha_week_meals(week_start: date) -> dict | None:
-    """Get one completed Home Assistant week with all meals and recipe metadata."""
+    """Get one completed week with all meals and recipe metadata.
+
+    Tries to resolve by week_start first so legacy plans without the ha-week-*
+    page-id prefix are still available in history mode.
+    """
     week_start_str = week_start.isoformat()
     with get_connection() as conn:
         plan_row = conn.execute(
             """
-            SELECT id, week_start, parsed_at
+            SELECT id, week_start, parsed_at, onenote_page_id
             FROM meal_plans
-            WHERE onenote_page_id = ?
+            WHERE week_start = ?
+            ORDER BY
+                CASE WHEN onenote_page_id LIKE 'ha-week-%' THEN 0 ELSE 1 END ASC,
+                parsed_at DESC
             LIMIT 1
             """,
-            (f"ha-week-{week_start_str}",),
+            (week_start_str,),
         ).fetchone()
 
         if not plan_row:

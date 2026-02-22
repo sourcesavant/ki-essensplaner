@@ -55,6 +55,46 @@ from src.scrapers.recipe_fetcher import scrape_recipe
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
 
 
+def _load_archived_history_weeks(limit: int = 52) -> list[dict]:
+    """Load archived weekly plans from local JSON files."""
+    from src.agents.models import WEEKLY_PLAN_FILE
+
+    archive_dir = WEEKLY_PLAN_FILE.parent
+    candidates = sorted(
+        archive_dir.glob("weekly_plan_*_completed.json"),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    result: list[dict] = []
+    for path in candidates:
+        plan = load_weekly_plan(path)
+        if not plan or not plan.week_start:
+            continue
+        result.append(
+            {
+                "week_start": plan.week_start,
+                "completed_at": plan.completed_at,
+                "meals_count": len(plan.get_selected_recipes()),
+            }
+        )
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _load_archived_week(week_start: str) -> WeeklyRecommendation | None:
+    """Load one archived week by its week_start key."""
+    from src.agents.models import WEEKLY_PLAN_FILE
+
+    archive_path = WEEKLY_PLAN_FILE.parent / f"weekly_plan_{week_start}_completed.json"
+    plan = load_weekly_plan(archive_path)
+    if not plan:
+        return None
+    if plan.week_start != week_start:
+        return None
+    return plan
+
+
 def _convert_to_response(plan: WeeklyRecommendation) -> WeeklyPlanResponse:
     """Convert internal WeeklyRecommendation to API response."""
     slots = []
@@ -311,7 +351,22 @@ def get_weekly_plan_history(
 ) -> WeeklyPlanHistoryResponse:
     """List completed Home Assistant weeks available in history."""
     normalized_limit = max(1, min(limit, 52))
-    weeks = get_completed_ha_weeks(normalized_limit)
+    merged_by_week_start: dict[str, dict] = {}
+    for week in get_completed_ha_weeks(52):
+        week_start = week.get("week_start")
+        if week_start:
+            merged_by_week_start[week_start] = week
+    for week in _load_archived_history_weeks(limit=52):
+        week_start = week.get("week_start")
+        if week_start and week_start not in merged_by_week_start:
+            merged_by_week_start[week_start] = week
+
+    weeks = sorted(
+        merged_by_week_start.values(),
+        key=lambda w: str(w.get("week_start", "")),
+        reverse=True,
+    )[:normalized_limit]
+
     return WeeklyPlanHistoryResponse(
         weeks=[
             WeeklyPlanHistoryItem(
@@ -340,13 +395,17 @@ def get_historical_weekly_plan(
         ) from exc
 
     week_data = get_ha_week_meals(week_start_date)
-    if week_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No completed historical week found for {week_start}.",
-        )
+    if week_data is not None:
+        return _history_week_to_response(week_data)
 
-    return _history_week_to_response(week_data)
+    archived_plan = _load_archived_week(week_start)
+    if archived_plan is not None:
+        return _convert_to_response(archived_plan)
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"No completed historical week found for {week_start}.",
+    )
 
 
 @router.post("/generate", status_code=status.HTTP_202_ACCEPTED, response_model=GenerateWeeklyPlanResponse)
