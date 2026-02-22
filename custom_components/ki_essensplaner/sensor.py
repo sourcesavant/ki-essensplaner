@@ -277,23 +277,33 @@ class WeeklyPlanStatusSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
         """Return extra state attributes."""
         data = self.coordinator.data if self.coordinator.data else {}
         plan = data.get("displayed_weekly_plan") or data.get("weekly_plan")
-        if plan is None:
-            return {}
-
         displayed_week_start = data.get("displayed_week_start")
         display_mode = "history" if displayed_week_start else "current"
-
-        return {
+        attrs = {
+            "display_mode": display_mode,
+            "displayed_week_start": displayed_week_start,
+            "available_weeks": data.get("weekly_plan_history", []),
+        }
+        if plan is None:
+            # Keep navigation metadata available even while no current plan exists.
+            attrs.update({
+                "week_start": None,
+                "generated_at": None,
+                "completed_at": None,
+                "favorites_count": 0,
+                "new_count": 0,
+                "total_slots": 0,
+            })
+            return attrs
+        attrs.update({
             "week_start": plan.get("week_start"),
             "generated_at": plan.get("generated_at"),
             "completed_at": plan.get("completed_at"),
             "favorites_count": plan.get("favorites_count", 0),
             "new_count": plan.get("new_count", 0),
             "total_slots": len(plan.get("slots", [])),
-            "display_mode": display_mode,
-            "displayed_week_start": displayed_week_start,
-            "available_weeks": data.get("weekly_plan_history", []),
-        }
+        })
+        return attrs
 
 
 class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):

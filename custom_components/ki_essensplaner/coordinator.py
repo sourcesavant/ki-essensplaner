@@ -1,5 +1,6 @@
 """DataUpdateCoordinator for KI-Essensplaner."""
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -13,6 +14,8 @@ from .const import DEFAULT_SCAN_INTERVAL, STATE_OFFLINE
 
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_HISTORY_LIMIT = 12
+PLAN_POLL_INTERVAL_SECONDS = 5
+PLAN_POLL_ATTEMPTS = 24  # 24 * 5s = 2 minutes
 
 
 class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -36,6 +39,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_valid_data: dict[str, Any] | None = None
         self._cache: dict[str, Any] = {}
         self._displayed_week_start: str | None = None
+        self._plan_poll_task: asyncio.Task | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from API with offline caching support."""
@@ -447,6 +451,9 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.error("Failed to generate weekly plan: %s", error_text)
                         raise UpdateFailed(f"Failed to generate weekly plan: {error_text}")
                     _LOGGER.info("Weekly plan generation started (background task)")
+            # Refresh now and poll until the new plan appears.
+            await self.async_request_refresh()
+            self._ensure_plan_polling()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error generating weekly plan: %s", err)
             raise UpdateFailed(f"Error generating weekly plan: {err}") from err
@@ -467,9 +474,34 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.error("Failed to complete weekly plan: %s", error_text)
                         raise UpdateFailed(f"Failed to complete weekly plan: {error_text}")
             await self.async_request_refresh()
+            if generate_next:
+                self._ensure_plan_polling()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error completing weekly plan: %s", err)
             raise UpdateFailed(f"Error completing weekly plan: {err}") from err
+
+    def _ensure_plan_polling(self) -> None:
+        """Start a background poll that refreshes until a plan exists again."""
+        if self._plan_poll_task and not self._plan_poll_task.done():
+            return
+        self._plan_poll_task = self.hass.async_create_task(self._poll_for_generated_plan())
+
+    async def _poll_for_generated_plan(self) -> None:
+        """Poll quickly for a generated plan to avoid waiting for scan interval."""
+        for attempt in range(PLAN_POLL_ATTEMPTS):
+            await asyncio.sleep(PLAN_POLL_INTERVAL_SECONDS)
+            await self.async_request_refresh()
+            weekly_plan = (self.data or {}).get("weekly_plan")
+            if weekly_plan is not None:
+                _LOGGER.info(
+                    "Detected generated weekly plan after %s polling attempts",
+                    attempt + 1,
+                )
+                return
+        _LOGGER.warning(
+            "Timed out waiting for generated weekly plan after %ss",
+            PLAN_POLL_INTERVAL_SECONDS * PLAN_POLL_ATTEMPTS,
+        )
 
     async def get_weekly_plan(self) -> dict[str, Any] | None:
         """Get the current weekly plan from API."""
