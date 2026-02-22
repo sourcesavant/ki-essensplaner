@@ -369,6 +369,7 @@ def get_completed_ha_weeks(limit: int = 12) -> list[dict]:
             LEFT JOIN meals m ON m.meal_plan_id = mp.id
             WHERE mp.week_start IS NOT NULL
               AND DATE(mp.week_start) <= DATE('now', '+7 day')
+              AND strftime('%w', mp.week_start) = '6'
             GROUP BY mp.week_start
             HAVING COUNT(m.id) > 0
             ORDER BY mp.week_start DESC

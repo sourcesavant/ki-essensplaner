@@ -55,6 +55,16 @@ from src.scrapers.recipe_fetcher import scrape_recipe
 router = APIRouter(prefix="/api/weekly-plan", tags=["weekly-plan"])
 
 
+def _is_valid_history_week_start(week_start: str | None) -> bool:
+    """Allow only Saturday week starts in history views."""
+    if not week_start:
+        return False
+    try:
+        return date.fromisoformat(week_start).weekday() == 5  # Saturday
+    except ValueError:
+        return False
+
+
 def _load_archived_history_weeks(limit: int = 52) -> list[dict]:
     """Load archived weekly plans from local JSON files."""
     from src.agents.models import WEEKLY_PLAN_FILE
@@ -70,6 +80,8 @@ def _load_archived_history_weeks(limit: int = 52) -> list[dict]:
         plan = load_weekly_plan(path)
         if not plan or not plan.week_start:
             continue
+        if not _is_valid_history_week_start(plan.week_start):
+            continue
         result.append(
             {
                 "week_start": plan.week_start,
@@ -84,6 +96,8 @@ def _load_archived_history_weeks(limit: int = 52) -> list[dict]:
 
 def _load_archived_week(week_start: str) -> WeeklyRecommendation | None:
     """Load one archived week by its week_start key."""
+    if not _is_valid_history_week_start(week_start):
+        return None
     from src.agents.models import WEEKLY_PLAN_FILE
 
     archive_path = WEEKLY_PLAN_FILE.parent / f"weekly_plan_{week_start}_completed.json"
@@ -354,11 +368,11 @@ def get_weekly_plan_history(
     merged_by_week_start: dict[str, dict] = {}
     for week in get_completed_ha_weeks(52):
         week_start = week.get("week_start")
-        if week_start:
+        if _is_valid_history_week_start(week_start):
             merged_by_week_start[week_start] = week
     for week in _load_archived_history_weeks(limit=52):
         week_start = week.get("week_start")
-        if week_start and week_start not in merged_by_week_start:
+        if _is_valid_history_week_start(week_start) and week_start not in merged_by_week_start:
             merged_by_week_start[week_start] = week
 
     weeks = sorted(
