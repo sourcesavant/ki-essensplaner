@@ -207,7 +207,7 @@ class WeeklyPlanCard extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
 
-    const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+    const weekdays = ['Samstag', 'Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
     const slots = ['Mittagessen', 'Abendessen'];
 
     const planStatus = this._hass.states[this._config.entity];

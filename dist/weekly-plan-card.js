@@ -59,7 +59,7 @@ class WeeklyPlanCard extends HTMLElement {
     }
 
     // Check if any meal slot entities changed
-    const weekdays = ['montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag'];
+    const weekdays = ['samstag', 'sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag'];
     const slots = ['mittagessen', 'abendessen'];
 
     for (const day of weekdays) {
@@ -300,7 +300,7 @@ class WeeklyPlanCard extends HTMLElement {
       this._savedScrollPosition = weekGrid.scrollLeft;
     }
 
-    const weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+    const weekdays = ['Samstag', 'Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
     const slots = ['Mittagessen', 'Abendessen'];
 
     const planStatus = this._hass.states[this._config.entity];
