@@ -172,16 +172,44 @@ class WeeklyPlanCard extends HTMLElement {
     const planStatus = this._hass?.states?.[this._config?.entity];
     const weeks = planStatus?.attributes?.available_weeks || [];
     const historyKeys = weeks.map((w) => w.week_start).filter(Boolean);
-    const options = ['current', ...historyKeys];
     const displayMode = planStatus?.attributes?.display_mode || 'current';
     const displayedWeekStart = planStatus?.attributes?.displayed_week_start || null;
-    const currentKey = displayMode === 'history' && displayedWeekStart ? displayedWeekStart : 'current';
-    const currentIndex = Math.max(options.indexOf(currentKey), 0);
-    const targetIndex = currentIndex + direction;
-    if (targetIndex < 0 || targetIndex >= options.length) {
+    if (!historyKeys.length || direction === 0) {
       return;
     }
-    this._setDisplayedWeek(options[targetIndex]);
+    const isHistoryMode = displayMode === 'history' && displayedWeekStart;
+
+    // Navigation model:
+    // current -> newest history -> older history (left)
+    // older history -> newer history -> current (right)
+    if (!isHistoryMode) {
+      if (direction < 0) {
+        this._setDisplayedWeek(historyKeys[0]);
+      }
+      return;
+    }
+
+    const currentIndex = historyKeys.indexOf(displayedWeekStart);
+    if (currentIndex === -1) {
+      this._setDisplayedWeek('current');
+      return;
+    }
+
+    if (direction < 0) {
+      const olderIndex = currentIndex + 1;
+      if (olderIndex < historyKeys.length) {
+        this._setDisplayedWeek(historyKeys[olderIndex]);
+      }
+      return;
+    }
+
+    const newerIndex = currentIndex - 1;
+    if (newerIndex >= 0) {
+      this._setDisplayedWeek(historyKeys[newerIndex]);
+      return;
+    }
+
+    this._setDisplayedWeek('current');
   }
 
   _formatDate(value) {
