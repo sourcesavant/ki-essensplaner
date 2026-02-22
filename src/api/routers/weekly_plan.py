@@ -1,7 +1,7 @@
 """Weekly plan API endpoints."""
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -31,6 +31,8 @@ from src.api.schemas.weekly_plan import (
     SkipSlotsRequest,
     SkipSlotsResponse,
     SlotResponse,
+    WeeklyPlanHistoryItem,
+    WeeklyPlanHistoryResponse,
     WeeklyPlanResponse,
 )
 from src.core.user_config import (
@@ -39,7 +41,13 @@ from src.core.user_config import (
     set_multi_day_preferences,
     set_skipped_slots,
 )
-from src.core.database import get_recipe_by_url, upsert_meal_plan, upsert_recipe
+from src.core.database import (
+    get_completed_ha_weeks,
+    get_ha_week_meals,
+    get_recipe_by_url,
+    upsert_meal_plan,
+    upsert_recipe,
+)
 from src.models.meal_plan import DayOfWeek, MealCreate, MealPlanCreate, MealSlot
 from src.scrapers.recipe_fetcher import scrape_recipe
 
@@ -136,6 +144,82 @@ def _map_slot(slot: str) -> MealSlot | None:
     return mapping.get(slot)
 
 
+def _day_of_week_to_weekday(day_of_week: int) -> str | None:
+    mapping = {
+        DayOfWeek.MONDAY.value: "Montag",
+        DayOfWeek.TUESDAY.value: "Dienstag",
+        DayOfWeek.WEDNESDAY.value: "Mittwoch",
+        DayOfWeek.THURSDAY.value: "Donnerstag",
+        DayOfWeek.FRIDAY.value: "Freitag",
+        DayOfWeek.SATURDAY.value: "Samstag",
+        DayOfWeek.SUNDAY.value: "Sonntag",
+    }
+    return mapping.get(day_of_week)
+
+
+def _meal_slot_to_label(slot: str) -> str | None:
+    mapping = {
+        MealSlot.LUNCH.value: "Mittagessen",
+        MealSlot.DINNER.value: "Abendessen",
+    }
+    return mapping.get(slot)
+
+
+def _history_week_to_response(week_data: dict) -> WeeklyPlanResponse:
+    slot_map: dict[tuple[str, str], dict] = {}
+    for meal in week_data.get("meals", []):
+        weekday = _day_of_week_to_weekday(meal.get("day_of_week"))
+        slot_label = _meal_slot_to_label(meal.get("slot"))
+        if not weekday or not slot_label:
+            continue
+        slot_map[(weekday, slot_label)] = meal
+
+    slots: list[SlotResponse] = []
+    for weekday in WEEKDAYS:
+        for slot_label in MEAL_SLOTS:
+            meal = slot_map.get((weekday, slot_label))
+            if meal:
+                recommendations = [
+                    RecipeResponse(
+                        title=meal.get("title") or "Unbekannt",
+                        url=meal.get("url"),
+                        score=0.0,
+                        reasoning="Historischer Wochenplan",
+                        is_new=False,
+                        recipe_id=meal.get("recipe_id"),
+                        prep_time_minutes=meal.get("prep_time_minutes"),
+                        calories=meal.get("calories"),
+                        ingredients=meal.get("ingredients") or [],
+                    )
+                ]
+                selected_index = 0
+            else:
+                recommendations = []
+                selected_index = -1
+
+            slots.append(
+                SlotResponse(
+                    weekday=weekday,
+                    slot=slot_label,
+                    recommendations=recommendations,
+                    selected_index=selected_index,
+                    reuse_from=None,
+                    prep_days=1,
+                    is_reuse_slot=False,
+                )
+            )
+
+    completed_at = week_data.get("completed_at")
+    return WeeklyPlanResponse(
+        generated_at=completed_at or datetime.now().isoformat(),
+        week_start=week_data["week_start"],
+        completed_at=completed_at,
+        favorites_count=0,
+        new_count=0,
+        slots=slots,
+    )
+
+
 def _build_meal_plan(plan: WeeklyRecommendation) -> tuple[MealPlanCreate, int, int]:
     """Create a MealPlanCreate from selected primary slots in the weekly plan."""
     meals: list[MealCreate] = []
@@ -215,6 +299,51 @@ def get_weekly_plan(_token: str = Depends(verify_token)) -> WeeklyPlanResponse:
         )
 
     return _convert_to_response(plan)
+
+
+@router.get("/history", response_model=WeeklyPlanHistoryResponse)
+def get_weekly_plan_history(
+    limit: int = 12,
+    _token: str = Depends(verify_token),
+) -> WeeklyPlanHistoryResponse:
+    """List completed Home Assistant weeks available in history."""
+    normalized_limit = max(1, min(limit, 52))
+    weeks = get_completed_ha_weeks(normalized_limit)
+    return WeeklyPlanHistoryResponse(
+        weeks=[
+            WeeklyPlanHistoryItem(
+                week_start=week["week_start"],
+                completed_at=week.get("completed_at"),
+                meals_count=week.get("meals_count", 0),
+            )
+            for week in weeks
+            if week.get("week_start")
+        ]
+    )
+
+
+@router.get("/history/{week_start}", response_model=WeeklyPlanResponse)
+def get_historical_weekly_plan(
+    week_start: str,
+    _token: str = Depends(verify_token),
+) -> WeeklyPlanResponse:
+    """Get one completed historical weekly plan by week_start (YYYY-MM-DD)."""
+    try:
+        week_start_date = date.fromisoformat(week_start)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="week_start must be a valid ISO date (YYYY-MM-DD).",
+        ) from exc
+
+    week_data = get_ha_week_meals(week_start_date)
+    if week_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No completed historical week found for {week_start}.",
+        )
+
+    return _history_week_to_response(week_data)
 
 
 @router.post("/generate", status_code=status.HTTP_202_ACCEPTED, response_model=GenerateWeeklyPlanResponse)

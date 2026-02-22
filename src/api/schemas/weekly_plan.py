@@ -40,6 +40,20 @@ class WeeklyPlanResponse(BaseModel):
     slots: list[SlotResponse] = Field(default_factory=list)
 
 
+class WeeklyPlanHistoryItem(BaseModel):
+    """Single completed week available for history browsing."""
+
+    week_start: str
+    completed_at: str | None = None
+    meals_count: int = 0
+
+
+class WeeklyPlanHistoryResponse(BaseModel):
+    """List of available completed weeks."""
+
+    weeks: list[WeeklyPlanHistoryItem] = Field(default_factory=list)
+
+
 class SelectRecipeRequest(BaseModel):
     """Request to select a recipe for a specific slot."""
 

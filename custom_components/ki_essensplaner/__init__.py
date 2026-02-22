@@ -86,6 +86,10 @@ COMPLETE_WEEK_SCHEMA = vol.Schema({
     vol.Optional("generate_next", default=True): cv.boolean,
 })
 
+SET_DISPLAYED_WEEK_SCHEMA = vol.Schema({
+    vol.Optional("week_start"): cv.string,
+})
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up KI-Essensplaner from a config entry."""
@@ -368,6 +372,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             {"message": "Weekly plan completed", "generate_next": generate_next},
         )
 
+    async def handle_set_displayed_week(call: ServiceCall) -> None:
+        """Handle set_displayed_week service call."""
+        week_start = call.data.get("week_start")
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.set_displayed_week(week_start)
+
     # Register services
     hass.services.async_register(
         DOMAIN, "rate_recipe", handle_rate_recipe, schema=RATE_RECIPE_SCHEMA
@@ -432,6 +442,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "complete_week", handle_complete_week, schema=COMPLETE_WEEK_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN,
+        "set_displayed_week",
+        handle_set_displayed_week,
+        schema=SET_DISPLAYED_WEEK_SCHEMA,
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -458,5 +474,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "clear_skip_slots")
             hass.services.async_remove(DOMAIN, "fetch_recipes")
             hass.services.async_remove(DOMAIN, "complete_week")
+            hass.services.async_remove(DOMAIN, "set_displayed_week")
 
     return unload_ok

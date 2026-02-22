@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import DEFAULT_SCAN_INTERVAL, STATE_OFFLINE
 
 _LOGGER = logging.getLogger(__name__)
+DEFAULT_HISTORY_LIMIT = 12
 
 
 class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -34,6 +35,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api_token = api_token
         self._last_valid_data: dict[str, Any] | None = None
         self._cache: dict[str, Any] = {}
+        self._displayed_week_start: str | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from API with offline caching support."""
@@ -63,6 +65,31 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "/api/weekly-plan",
                     not_found_none=True,
                 )
+                history_data = await self._fetch_cached_json(
+                    session,
+                    "weekly_plan_history",
+                    "GET",
+                    f"/api/weekly-plan/history?limit={DEFAULT_HISTORY_LIMIT}",
+                )
+                if isinstance(history_data, dict):
+                    data["weekly_plan_history"] = history_data.get("weeks", [])
+                else:
+                    data["weekly_plan_history"] = []
+                data["displayed_week_start"] = self._displayed_week_start
+                data["displayed_weekly_plan"] = data.get("weekly_plan")
+                if self._displayed_week_start:
+                    historical_plan = await self._fetch_cached_json(
+                        session,
+                        f"weekly_plan_history_{self._displayed_week_start}",
+                        "GET",
+                        f"/api/weekly-plan/history/{self._displayed_week_start}",
+                        not_found_none=True,
+                    )
+                    if historical_plan is None:
+                        self._displayed_week_start = None
+                        data["displayed_week_start"] = None
+                    else:
+                        data["displayed_weekly_plan"] = historical_plan
                 data["config"] = await self._fetch_cached_json(
                     session,
                     "config",
@@ -427,6 +454,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def complete_week(self, generate_next: bool = True) -> None:
         """Mark the current weekly plan as completed via API."""
         try:
+            self._displayed_week_start = None
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.api_url}/api/weekly-plan/complete",
@@ -464,6 +492,14 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Error fetching weekly plan: %s", err)
             return None
 
+    async def set_displayed_week(self, week_start: str | None) -> None:
+        """Set which week should be displayed in sensors/cards."""
+        normalized = week_start.strip() if isinstance(week_start, str) else None
+        if normalized in ("", "current"):
+            normalized = None
+        self._displayed_week_start = normalized
+        await self.async_request_refresh()
+
     async def select_recipe(self, weekday: str, slot: str, recipe_index: int) -> None:
         """Select a recipe for a specific meal slot.
 
@@ -473,6 +509,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             recipe_index: Recipe index (0-4) or -1 for none
         """
         try:
+            self._displayed_week_start = None
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.api_url}/api/weekly-plan/select",
@@ -507,6 +544,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             recipe_url: URL to scrape and select
         """
         try:
+            self._displayed_week_start = None
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.api_url}/api/weekly-plan/select-url",
@@ -534,6 +572,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def delete_weekly_plan(self) -> None:
         """Delete the current weekly plan via API."""
         try:
+            self._displayed_week_start = None
             async with aiohttp.ClientSession() as session:
                 async with session.delete(
                     f"{self.api_url}/api/weekly-plan",
@@ -551,6 +590,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def get_config(self) -> dict[str, Any] | None:
         """Get configuration from API."""
         try:
+            self._displayed_week_start = None
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"{self.api_url}/api/config",

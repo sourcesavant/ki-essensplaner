@@ -261,9 +261,13 @@ class WeeklyPlanStatusSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
     @property
     def native_value(self) -> str:
         """Return the state of the sensor."""
-        plan = self.coordinator.data.get("weekly_plan") if self.coordinator.data else None
+        data = self.coordinator.data if self.coordinator.data else {}
+        plan = data.get("displayed_weekly_plan") or data.get("weekly_plan")
+        display_mode = "history" if data.get("displayed_week_start") else "current"
         if plan is None:
             return "no_plan"
+        if display_mode == "history":
+            return "history"
         if plan.get("completed_at"):
             return "completed"
         return "active"
@@ -271,9 +275,13 @@ class WeeklyPlanStatusSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        plan = self.coordinator.data.get("weekly_plan") if self.coordinator.data else None
+        data = self.coordinator.data if self.coordinator.data else {}
+        plan = data.get("displayed_weekly_plan") or data.get("weekly_plan")
         if plan is None:
             return {}
+
+        displayed_week_start = data.get("displayed_week_start")
+        display_mode = "history" if displayed_week_start else "current"
 
         return {
             "week_start": plan.get("week_start"),
@@ -282,6 +290,9 @@ class WeeklyPlanStatusSensor(CoordinatorEntity[EssensplanerCoordinator], SensorE
             "favorites_count": plan.get("favorites_count", 0),
             "new_count": plan.get("new_count", 0),
             "total_slots": len(plan.get("slots", [])),
+            "display_mode": display_mode,
+            "displayed_week_start": displayed_week_start,
+            "available_weeks": data.get("weekly_plan_history", []),
         }
 
 
@@ -312,7 +323,8 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
 
     def _get_slot_data(self) -> dict[str, Any] | None:
         """Get slot data from plan."""
-        plan = self.coordinator.data.get("weekly_plan") if self.coordinator.data else None
+        data = self.coordinator.data if self.coordinator.data else {}
+        plan = data.get("displayed_weekly_plan") or data.get("weekly_plan")
         if plan is None:
             return None
 

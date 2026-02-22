@@ -106,9 +106,21 @@ complete_week:
       name: Generate Next Plan
       description: Automatically generate a new weekly plan after completion
       required: false
-      example: true
+          example: true
+          selector:
+            boolean:
+
+set_displayed_week:
+  name: Set Displayed Week
+  description: Switch the dashboard view between current weekly plan and a historical completed week.
+  fields:
+    week_start:
+      name: Week Start
+      description: Optional ISO date (YYYY-MM-DD) for history. Omit to show current week.
+      required: false
+      example: "2026-02-14"
       selector:
-        boolean:
+        text:
 
 set_household_size:
   name: Set Household Size

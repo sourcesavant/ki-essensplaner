@@ -4,7 +4,7 @@ import json
 import sqlite3
 import shutil
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from typing import Generator
 
 from src.core.config import DB_PATH, PROJECT_ROOT, ensure_directories
@@ -349,6 +349,100 @@ def get_all_meal_plans() -> list[MealPlan]:
     with get_connection() as conn:
         rows = conn.execute("SELECT * FROM meal_plans ORDER BY week_start DESC").fetchall()
         return [_row_to_meal_plan(conn, row) for row in rows]
+
+
+def get_completed_ha_weeks(limit: int = 12) -> list[dict]:
+    """Get completed Home Assistant weeks for history browsing."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                mp.week_start,
+                mp.parsed_at AS completed_at,
+                COUNT(m.id) AS meals_count
+            FROM meal_plans mp
+            LEFT JOIN meals m ON m.meal_plan_id = mp.id
+            WHERE mp.onenote_page_id LIKE 'ha-week-%'
+              AND mp.week_start IS NOT NULL
+            GROUP BY mp.id
+            ORDER BY mp.week_start DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "week_start": row["week_start"],
+                "completed_at": row["completed_at"],
+                "meals_count": row["meals_count"] or 0,
+            }
+            for row in rows
+        ]
+
+
+def get_ha_week_meals(week_start: date) -> dict | None:
+    """Get one completed Home Assistant week with all meals and recipe metadata."""
+    week_start_str = week_start.isoformat()
+    with get_connection() as conn:
+        plan_row = conn.execute(
+            """
+            SELECT id, week_start, parsed_at
+            FROM meal_plans
+            WHERE onenote_page_id = ?
+            LIMIT 1
+            """,
+            (f"ha-week-{week_start_str}",),
+        ).fetchone()
+
+        if not plan_row:
+            return None
+
+        meal_rows = conn.execute(
+            """
+            SELECT
+                m.day_of_week,
+                m.slot,
+                m.recipe_id,
+                m.recipe_title,
+                r.title AS db_title,
+                r.source_url,
+                r.prep_time_minutes,
+                r.calories,
+                r.ingredients
+            FROM meals m
+            LEFT JOIN recipes r ON r.id = m.recipe_id
+            WHERE m.meal_plan_id = ?
+            ORDER BY m.day_of_week ASC, m.slot ASC
+            """,
+            (plan_row["id"],),
+        ).fetchall()
+
+        meals: list[dict] = []
+        for row in meal_rows:
+            ingredients = []
+            if row["ingredients"]:
+                try:
+                    ingredients = json.loads(row["ingredients"])
+                except json.JSONDecodeError:
+                    ingredients = []
+            meals.append(
+                {
+                    "day_of_week": row["day_of_week"],
+                    "slot": row["slot"],
+                    "recipe_id": row["recipe_id"],
+                    "title": row["db_title"] or row["recipe_title"],
+                    "url": row["source_url"],
+                    "prep_time_minutes": row["prep_time_minutes"],
+                    "calories": row["calories"],
+                    "ingredients": ingredients,
+                }
+            )
+
+        return {
+            "week_start": plan_row["week_start"],
+            "completed_at": plan_row["parsed_at"],
+            "meals": meals,
+        }
 
 
 def upsert_meal_plan(meal_plan: MealPlanCreate) -> MealPlan:

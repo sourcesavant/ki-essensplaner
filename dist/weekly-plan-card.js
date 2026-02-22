@@ -160,6 +160,30 @@ class WeeklyPlanCard extends HTMLElement {
     });
   }
 
+  _setDisplayedWeek(weekStart) {
+    if (!weekStart || weekStart === 'current') {
+      this._callService('set_displayed_week', {});
+      return;
+    }
+    this._callService('set_displayed_week', { week_start: weekStart });
+  }
+
+  _changeDisplayedWeek(direction) {
+    const planStatus = this._hass?.states?.[this._config?.entity];
+    const weeks = planStatus?.attributes?.available_weeks || [];
+    const historyKeys = weeks.map((w) => w.week_start).filter(Boolean);
+    const options = ['current', ...historyKeys];
+    const displayMode = planStatus?.attributes?.display_mode || 'current';
+    const displayedWeekStart = planStatus?.attributes?.displayed_week_start || null;
+    const currentKey = displayMode === 'history' && displayedWeekStart ? displayedWeekStart : 'current';
+    const currentIndex = Math.max(options.indexOf(currentKey), 0);
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0 || targetIndex >= options.length) {
+      return;
+    }
+    this._setDisplayedWeek(options[targetIndex]);
+  }
+
   _formatDate(value) {
     if (!value) return '';
     const date = new Date(value);
@@ -203,7 +227,7 @@ class WeeklyPlanCard extends HTMLElement {
     return '#f44336'; // Red - elaborate
   }
 
-  _renderSlot(weekday, slot) {
+  _renderSlot(weekday, slot, readOnly = false) {
     const entityId = this._getSlotEntity(weekday, slot);
     const state = this._hass.states[entityId];
 
@@ -230,7 +254,7 @@ class WeeklyPlanCard extends HTMLElement {
     const reuseBadge = isReuseSlot ? '<span class="badge reuse">♻️ Reste</span>' : '';
 
     const alternativesHtml = !isReuseSlot ? `
-      <select class="alternatives" onchange="this.getRootNode().host._selectRecipe('${weekday}', '${slot}', this.value)">
+      <select class="alternatives" onchange="this.getRootNode().host._selectRecipe('${weekday}', '${slot}', this.value)" ${readOnly ? 'disabled' : ''}>
         <option value="-1" ${selectedIndex === -1 ? 'selected' : ''}>Kein Rezept</option>
         ${alternatives.map((alt, index) => `
           <option value="${index}" ${index === selectedIndex ? 'selected' : ''}>
@@ -239,8 +263,8 @@ class WeeklyPlanCard extends HTMLElement {
         `).join('')}
       </select>
       <div class="custom-url">
-        <input class="custom-url-input" type="url" placeholder="Rezept-Link einfuegen" />
-        <button class="custom-url-button" onclick="this.getRootNode().host._handleCustomUrlClick(this, '${weekday}', '${slot}')">
+        <input class="custom-url-input" type="url" placeholder="Rezept-Link einfuegen" ${readOnly ? 'disabled' : ''} />
+        <button class="custom-url-button" onclick="this.getRootNode().host._handleCustomUrlClick(this, '${weekday}', '${slot}')" ${readOnly ? 'disabled' : ''}>
           Hinzufuegen
         </button>
         <div class="custom-url-feedback" aria-live="polite"></div>
@@ -285,6 +309,10 @@ class WeeklyPlanCard extends HTMLElement {
     const isCompleted = Boolean(completedAt);
     const completedLabel = completedAt ? this._formatDate(completedAt) : '';
     const generatedAt = planStatus?.attributes?.generated_at || null;
+    const displayMode = planStatus?.attributes?.display_mode || 'current';
+    const isHistoryMode = displayMode === 'history';
+    const displayedWeekStart = planStatus?.attributes?.displayed_week_start || null;
+    const availableWeeks = planStatus?.attributes?.available_weeks || [];
 
     if (this._isGenerating && this._lastGeneratedAt && generatedAt && generatedAt !== this._lastGeneratedAt) {
       this._isGenerating = false;
@@ -326,6 +354,21 @@ class WeeklyPlanCard extends HTMLElement {
           gap: 8px;
           align-items: center;
           flex-wrap: wrap;
+        }
+        .week-selector {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-right: 8px;
+        }
+        .week-select {
+          min-width: 180px;
+          padding: 6px;
+          border: 1px solid var(--divider-color);
+          border-radius: 4px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-size: 12px;
         }
         .action-button {
           padding: 8px 16px;
@@ -519,7 +562,19 @@ class WeeklyPlanCard extends HTMLElement {
             🍽️ Wochenplan
             ${isCompleted ? `<span class="status-badge">Abgeschlossen am ${completedLabel}</span>` : ''}
           </div>
-          ${hasPlan ? `
+          <div class="week-selector">
+            <button class="action-button secondary" onclick="this.getRootNode().host._changeDisplayedWeek(-1)">&larr;</button>
+            <select class="week-select" onchange="this.getRootNode().host._setDisplayedWeek(this.value)">
+              <option value="current" ${!isHistoryMode ? 'selected' : ''}>Aktuelle Woche</option>
+              ${availableWeeks.map((week) => `
+                <option value="${week.week_start}" ${(isHistoryMode && displayedWeekStart === week.week_start) ? 'selected' : ''}>
+                  Woche ab ${this._formatDate(week.week_start)}
+                </option>
+              `).join('')}
+            </select>
+            <button class="action-button secondary" onclick="this.getRootNode().host._changeDisplayedWeek(1)">&rarr;</button>
+          </div>
+          ${hasPlan && !isHistoryMode ? `
             <div class="action-buttons">
               ${isCompleted ? `
                 <button class="action-button primary" ${this._isGenerating ? 'disabled' : ''} onclick="this.getRootNode().host._generatePlan()">
@@ -536,13 +591,14 @@ class WeeklyPlanCard extends HTMLElement {
             </div>
           ` : ''}
         </div>
-        ${this._isGenerating ? `<div class="status-note">Generierung lÃ¤uft ...</div>` : ''}
+        ${isHistoryMode ? `<div class="status-note">Historische Woche (${this._formatDate(displayedWeekStart)}) - nur Anzeige.</div>` : ''}
+        ${this._isGenerating ? `<div class="status-note">Generierung laeuft ...</div>` : ''}
         ${hasPlan ? `
           <div class="week-grid">
             ${weekdays.map(weekday => `
               <div class="day-column">
                 <div class="day-header">${weekday}</div>
-                ${slots.map(slot => this._renderSlot(weekday, slot)).join('')}
+                ${slots.map(slot => this._renderSlot(weekday, slot, isHistoryMode)).join('')}
               </div>
             `).join('')}
           </div>
@@ -626,6 +682,10 @@ console.info(
   'color: white; background: #4caf50; font-weight: 700;',
   'color: #4caf50; background: white; font-weight: 700;'
 );
+
+
+
+
 
 
 
