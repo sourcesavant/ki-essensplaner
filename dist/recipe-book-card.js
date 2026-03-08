@@ -37,6 +37,28 @@ class RecipeBookCard extends HTMLElement {
     this.render();
   }
 
+  _escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  _safeUrl(rawUrl) {
+    if (!rawUrl) return null;
+    try {
+      const parsed = new URL(rawUrl, window.location.origin);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.href;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   _formatDate(dateStr) {
     if (!dateStr) return '–';
     try {
@@ -70,7 +92,8 @@ class RecipeBookCard extends HTMLElement {
     const filtered = recipes.filter(r => {
       if (filter === 'rated' && !r.rating) return false;
       if (filter === 'blocked' && r.rating !== 1) return false;
-      if (search && !r.title.toLowerCase().includes(search)) return false;
+      const title = (r.title || '').toLowerCase();
+      if (search && !title.includes(search)) return false;
       return true;
     });
 
@@ -210,7 +233,7 @@ class RecipeBookCard extends HTMLElement {
                   onclick="this.getRootNode().host._setFilter('rated')">Bewertet</button>
           <button class="filter-btn ${filter === 'blocked' ? 'active' : ''}"
                   onclick="this.getRootNode().host._setFilter('blocked')">&#128683; Gesperrt</button>
-          <input class="search-input" type="search" placeholder="Suchen…" value="${this._search}"
+          <input class="search-input" type="search" placeholder="Suchen…" value="${this._escapeHtml(this._search)}"
                  oninput="this.getRootNode().host._setSearch(this.value)" />
         </div>
         <div class="count-label">${filtered.length} Rezept${filtered.length !== 1 ? 'e' : ''} angezeigt</div>
@@ -225,19 +248,24 @@ class RecipeBookCard extends HTMLElement {
             </tr>
           </thead>
           <tbody>
-            ${filtered.map(r => `
+            ${filtered.map((r) => {
+              const safeTitle = this._escapeHtml(r.title || '');
+              const safeUrl = this._safeUrl(r.url);
+              const recipeLabel = safeUrl
+                ? `<a class="recipe-link" href="${this._escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${safeTitle}</a>`
+                : safeTitle;
+              return `
               <tr>
                 <td>
-                  ${r.url
-                    ? `<a class="recipe-link" href="${r.url}" target="_blank">${r.title}</a>`
-                    : r.title}
+                  ${recipeLabel}
                   ${r.rating === 1 ? '<span class="badge-blocked">&#128683; Gesperrt</span>' : ''}
                 </td>
                 <td>${this._renderStars(r.id, r.rating)}</td>
                 <td class="cook-count">${r.cook_count || 0}×</td>
                 <td>${this._formatDate(r.last_cooked)}</td>
               </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
         `}
@@ -253,3 +281,4 @@ window.customCards.push({
   name: 'Rezeptbuch',
   description: 'Zeigt alle gekochten und bewerteten Rezepte mit Filteroptionen.',
 });
+

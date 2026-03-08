@@ -64,6 +64,15 @@ class ShoppingListCard extends HTMLElement {
     return `${(item.ingredient || '').toLowerCase()}_${item.unit || ''}`;
   }
 
+  _escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   _toggleItem(itemKey) {
     const newChecked = !this._checkedItems.has(itemKey);
     if (newChecked) {
@@ -72,7 +81,7 @@ class ShoppingListCard extends HTMLElement {
       this._checkedItems.delete(itemKey);
     }
     // Optimistic UI update
-    const itemEl = this.shadowRoot?.querySelector(`.item[data-item-key="${itemKey}"]`);
+    const itemEl = this.shadowRoot?.querySelector(`.item[data-item-key="${CSS.escape(itemKey)}"]`);
     if (itemEl) {
       itemEl.classList.toggle('checked', newChecked);
       const checkbox = itemEl.querySelector('input[type="checkbox"]');
@@ -128,23 +137,36 @@ class ShoppingListCard extends HTMLElement {
 
   _renderItem(item) {
     const itemKey = this._itemKey(item);
+    const escapedItemKey = this._escapeHtml(itemKey);
     const isChecked = this._checkedItems.has(itemKey);
     const amount = item.amount ? `${item.amount}` : '';
     const unit = item.unit || '';
     const ingredient = item.ingredient || '';
 
     return `
-      <div class="item ${isChecked ? 'checked' : ''}" data-item-key="${itemKey}">
+      <div class="item ${isChecked ? 'checked' : ''}" data-item-key="${escapedItemKey}">
         <input
+          class="item-toggle"
           type="checkbox"
+          data-item-key="${escapedItemKey}"
           ${isChecked ? 'checked' : ''}
-          onchange="this.getRootNode().host._toggleItem('${itemKey}')"
         />
         <span class="item-text">
-          ${amount} ${unit} <strong>${ingredient}</strong>
+          ${this._escapeHtml(amount)} ${this._escapeHtml(unit)} <strong>${this._escapeHtml(ingredient)}</strong>
         </span>
       </div>
     `;
+  }
+
+  _bindItemListeners() {
+    const toggles = this.shadowRoot?.querySelectorAll('.item-toggle') || [];
+    toggles.forEach((el) => {
+      el.addEventListener('change', (event) => {
+        const key = event.currentTarget?.dataset?.itemKey;
+        if (!key) return;
+        this._toggleItem(key);
+      });
+    });
   }
 
   render() {
@@ -416,6 +438,7 @@ class ShoppingListCard extends HTMLElement {
         `}
       </ha-card>
     `;
+    this._bindItemListeners();
 
     const newListEl = this.shadowRoot?.querySelector('.item-list');
     if (newListEl) {
