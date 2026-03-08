@@ -40,8 +40,10 @@ from src.core.database import (
     get_excluded_ingredients,
     get_recent_ha_week_recipe_history,
     get_recipe,
+    get_recipe_by_url,
+    upsert_recipe,
 )
-from src.models.recipe import Recipe
+from src.models.recipe import Recipe, RecipeCreate
 from src.profile.preference_profile import ensure_profile_current
 from src.scrapers.bioland_huesgen import ensure_bioland_current
 from src.scoring.recipe_scorer import (
@@ -320,6 +322,8 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
         if not recipe.url:
             continue
 
+        db_recipe = get_recipe_by_url(recipe.url)
+
         try:
             print(f"    Loading details: {recipe.title[:40]}...")
             scraper = scrape_me(recipe.url)
@@ -344,6 +348,20 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
                 servings=servings,
             )
 
+            if db_recipe is None:
+                db_recipe = upsert_recipe(
+                    RecipeCreate(
+                        title=full_recipe.title,
+                        source=full_recipe.source,
+                        source_url=full_recipe.source_url,
+                        prep_time_minutes=full_recipe.prep_time_minutes,
+                        ingredients=full_recipe.ingredients,
+                        calories=full_recipe.calories,
+                        servings=full_recipe.servings,
+                    )
+                )
+            full_recipe.id = db_recipe.id
+
             # Check viability with full ingredients
             is_viable, unobtainable, ratio = is_recipe_viable(full_recipe, context)
 
@@ -360,6 +378,7 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
                 score=score.total_score,
                 reasoning=score.reasoning,
                 is_new=True,
+                recipe_id=db_recipe.id if db_recipe else None,
                 prep_time_minutes=full_recipe.prep_time_minutes,
                 calories=recipe.calories,
                 ingredients=full_recipe.ingredients,
@@ -371,10 +390,63 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
 
         except Exception as e:
             print(f"      Failed to load: {e}")
-            # Keep the recipe with preliminary score
-            detailed_recipes.append(recipe)
+            # Persist URL as minimal recipe so it can be rated/blacklisted immediately.
+            if db_recipe is None:
+                try:
+                    db_recipe = upsert_recipe(
+                        RecipeCreate(
+                            title=recipe.title,
+                            source="eatsmarter",
+                            source_url=recipe.url,
+                            prep_time_minutes=recipe.prep_time_minutes,
+                            ingredients=[],
+                            calories=recipe.calories,
+                        )
+                    )
+                except Exception:
+                    db_recipe = None
+
+            # Keep the recipe with preliminary score, but include DB ID if available.
+            detailed_recipes.append(
+                replace(recipe, recipe_id=db_recipe.id if db_recipe else recipe.recipe_id)
+            )
 
     return detailed_recipes
+
+
+def _remove_selected_recipe_duplicates_from_alternatives(
+    recommendations: list[SlotRecommendation],
+) -> None:
+    """Ensure selected recipes of other slots are not shown as alternatives."""
+    selected_keys_by_slot: dict[tuple[str, str], tuple[str, str | int]] = {}
+    selected_keys: set[tuple[str, str | int]] = set()
+
+    for slot_rec in recommendations:
+        if not slot_rec.recommendations:
+            continue
+        if 0 <= slot_rec.selected_index < len(slot_rec.recommendations):
+            selected = slot_rec.recommendations[slot_rec.selected_index]
+        else:
+            selected = slot_rec.recommendations[0]
+            slot_rec.selected_index = 0
+
+        selected_key = _recipe_key(selected)
+        if selected_key is None:
+            continue
+        slot_key = (slot_rec.weekday, slot_rec.slot)
+        selected_keys_by_slot[slot_key] = selected_key
+        selected_keys.add(selected_key)
+
+    for slot_rec in recommendations:
+        slot_key = (slot_rec.weekday, slot_rec.slot)
+        own_selected_key = selected_keys_by_slot.get(slot_key)
+
+        filtered: list[ScoredRecipe] = []
+        for recipe in slot_rec.recommendations:
+            key = _recipe_key(recipe)
+            if key is None or key == own_selected_key or key not in selected_keys:
+                filtered.append(recipe)
+        slot_rec.recommendations = filtered
 
 
 def _score_favorites(
@@ -925,6 +997,7 @@ def run_search_agent(
         planned_reuse_slots,
         banned_keys=banned_keys,
     )
+    _remove_selected_recipe_duplicates_from_alternatives(slot_recommendations)
 
     # Calculate stats
     favorites_count = sum(

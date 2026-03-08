@@ -84,8 +84,18 @@ class WeeklyPlanCard extends HTMLElement {
     this._hass.callService('ki_essensplaner', service, data);
   }
 
-  _rateRecipe(recipeId, rating) {
-    this._callService('rate_recipe', { recipe_id: recipeId, rating: rating });
+  _rateRecipe(recipeId, recipeUrlEncoded, recipeTitleEncoded, rating) {
+    const payload = { rating: rating };
+    if (recipeId) {
+      payload.recipe_id = recipeId;
+    } else {
+      const recipeUrl = decodeURIComponent(recipeUrlEncoded || '');
+      const recipeTitle = decodeURIComponent(recipeTitleEncoded || '');
+      if (!recipeUrl) return;
+      payload.recipe_url = recipeUrl;
+      payload.recipe_title = recipeTitle;
+    }
+    this._callService('rate_recipe', payload);
   }
 
   _selectRecipe(weekday, slot, recipeIndex) {
@@ -286,12 +296,14 @@ class WeeklyPlanCard extends HTMLElement {
     const reuseBadge = isReuseSlot ? '<span class="badge reuse">♻️ Reste</span>' : '';
 
     const recipeId = attributes.recipe_id;
+    const encodedRecipeUrl = encodeURIComponent(recipeUrl || '');
+    const encodedRecipeTitle = encodeURIComponent(recipeTitle || '');
     const currentRating = attributes.rating || 0;
-    const starsHtml = recipeId && !readOnly ? `
+    const starsHtml = (recipeId || recipeUrl) && !readOnly ? `
       <div class="star-rating">
         ${[1,2,3,4,5].map(s => `
           <span class="star ${s <= currentRating ? 'filled' : ''}"
-                onclick="this.getRootNode().host._rateRecipe(${recipeId}, ${s})">&#9733;</span>
+                onclick="this.getRootNode().host._rateRecipe(${recipeId || 'null'}, '${encodedRecipeUrl}', '${encodedRecipeTitle}', ${s})">&#9733;</span>
         `).join('')}
       </div>
     ` : '';

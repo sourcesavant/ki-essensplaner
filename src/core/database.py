@@ -845,7 +845,26 @@ def get_recipe_book() -> list[dict]:
         calories, rating, rated_at, cook_count, last_cooked
     """
     with get_connection() as conn:
-        rows = conn.execute("""
+        cooked_rows = conn.execute("""
+            SELECT
+                m.id AS meal_id,
+                mp.week_start,
+                r.id AS recipe_id,
+                r.title AS db_title,
+                r.source_url,
+                r.prep_time_minutes,
+                r.calories,
+                rr.rating,
+                rr.rated_at,
+                m.recipe_title
+            FROM meals m
+            JOIN meal_plans mp ON mp.id = m.meal_plan_id
+            LEFT JOIN recipes r ON r.id = m.recipe_id
+            LEFT JOIN recipe_ratings rr ON rr.recipe_id = r.id
+            ORDER BY mp.week_start DESC, m.id DESC
+        """).fetchall()
+
+        rated_rows = conn.execute("""
             SELECT
                 r.id,
                 r.title,
@@ -853,18 +872,75 @@ def get_recipe_book() -> list[dict]:
                 r.prep_time_minutes,
                 r.calories,
                 rr.rating,
-                rr.rated_at,
-                COUNT(DISTINCT m.id) AS cook_count,
-                MAX(mp.week_start) AS last_cooked
-            FROM recipes r
-            LEFT JOIN recipe_ratings rr ON rr.recipe_id = r.id
-            LEFT JOIN meals m ON m.recipe_id = r.id
-            LEFT JOIN meal_plans mp ON mp.id = m.meal_plan_id
-            GROUP BY r.id
-            HAVING cook_count > 0 OR rr.recipe_id IS NOT NULL
-            ORDER BY cook_count DESC, last_cooked DESC
+                rr.rated_at
+            FROM recipe_ratings rr
+            JOIN recipes r ON r.id = rr.recipe_id
         """).fetchall()
-        return [dict(row) for row in rows]
+
+    book: dict[str, dict] = {}
+    seen_meals: dict[str, set[int]] = defaultdict(set)
+
+    for row in cooked_rows:
+        recipe_id = row["recipe_id"]
+        source_url = row["source_url"]
+        recipe_title = row["db_title"] or row["recipe_title"] or "Unbekanntes Rezept"
+        raw_recipe_title = row["recipe_title"] or ""
+        if recipe_id is not None:
+            key = f"id:{recipe_id}"
+        elif raw_recipe_title.startswith("http"):
+            key = f"url:{raw_recipe_title}"
+            source_url = source_url or raw_recipe_title
+        else:
+            key = f"title:{recipe_title.strip().lower()}"
+
+        entry = book.setdefault(
+            key,
+            {
+                "id": recipe_id,
+                "title": recipe_title,
+                "source_url": source_url,
+                "prep_time_minutes": row["prep_time_minutes"],
+                "calories": row["calories"],
+                "rating": row["rating"] if recipe_id is not None else None,
+                "rated_at": row["rated_at"] if recipe_id is not None else None,
+                "cook_count": 0,
+                "last_cooked": row["week_start"],
+            },
+        )
+        if row["meal_id"] not in seen_meals[key]:
+            seen_meals[key].add(row["meal_id"])
+            entry["cook_count"] += 1
+        if row["week_start"] and (
+            entry.get("last_cooked") is None or row["week_start"] > entry["last_cooked"]
+        ):
+            entry["last_cooked"] = row["week_start"]
+
+    for row in rated_rows:
+        key = f"id:{row['id']}"
+        if key in book:
+            book[key]["rating"] = row["rating"]
+            book[key]["rated_at"] = row["rated_at"]
+            continue
+        book[key] = {
+            "id": row["id"],
+            "title": row["title"],
+            "source_url": row["source_url"],
+            "prep_time_minutes": row["prep_time_minutes"],
+            "calories": row["calories"],
+            "rating": row["rating"],
+            "rated_at": row["rated_at"],
+            "cook_count": 0,
+            "last_cooked": None,
+        }
+
+    return sorted(
+        book.values(),
+        key=lambda r: (
+            -(r.get("cook_count") or 0),
+            r.get("last_cooked") or "",
+            r.get("title") or "",
+        ),
+    )
 
 
 def delete_recipe_rating(recipe_id: int) -> bool:

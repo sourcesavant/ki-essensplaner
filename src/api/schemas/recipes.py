@@ -9,6 +9,14 @@ class RateRecipeRequest(BaseModel):
     rating: int = Field(..., ge=1, le=5, description="Rating (1-5 stars)")
 
 
+class RateRecipeByUrlRequest(BaseModel):
+    """Request to rate a recipe by URL (creates recipe row if needed)."""
+
+    recipe_url: str = Field(..., min_length=1, description="Recipe URL")
+    recipe_title: str | None = Field(default=None, description="Optional recipe title fallback")
+    rating: int = Field(..., ge=1, le=5, description="Rating (1-5 stars)")
+
+
 class RecipeRatingResponse(BaseModel):
     """Response with recipe rating."""
 

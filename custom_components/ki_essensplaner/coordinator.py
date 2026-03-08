@@ -124,27 +124,36 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 skipped = data.get("skipped_slots")
                 if isinstance(skipped, dict):
                     data["skipped_slots"] = skipped.get("slots", [])
-                data["shopping_list"] = await self._fetch_cached_json(
-                    session,
-                    "shopping_list",
-                    "GET",
-                    "/api/shopping-list",
-                    not_found_none=True,
-                )
-                data["split_shopping_list"] = await self._fetch_cached_json(
-                    session,
-                    "split_shopping_list",
-                    "GET",
-                    "/api/shopping-list/split",
-                    not_found_none=True,
-                )
-                data["shopping_checked"] = await self._fetch_cached_json(
-                    session,
-                    "shopping_checked",
-                    "GET",
-                    "/api/shopping-list/checked",
-                    not_found_none=True,
-                ) or {"checked_items": []}
+                if data.get("weekly_plan") is None:
+                    # Avoid noisy 404 polling for shopping endpoints when no active week exists.
+                    data["shopping_list"] = None
+                    data["split_shopping_list"] = None
+                    data["shopping_checked"] = {"checked_items": []}
+                    self._cache["shopping_list"] = None
+                    self._cache["split_shopping_list"] = None
+                    self._cache["shopping_checked"] = {"checked_items": []}
+                else:
+                    data["shopping_list"] = await self._fetch_cached_json(
+                        session,
+                        "shopping_list",
+                        "GET",
+                        "/api/shopping-list",
+                        not_found_none=True,
+                    )
+                    data["split_shopping_list"] = await self._fetch_cached_json(
+                        session,
+                        "split_shopping_list",
+                        "GET",
+                        "/api/shopping-list/split",
+                        not_found_none=True,
+                    )
+                    data["shopping_checked"] = await self._fetch_cached_json(
+                        session,
+                        "shopping_checked",
+                        "GET",
+                        "/api/shopping-list/checked",
+                        not_found_none=True,
+                    ) or {"checked_items": []}
                 _raw_ratings = await self._fetch_cached_json(
                     session,
                     "recipe_ratings",
@@ -338,25 +347,48 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Public wrapper for immediate shopping list refresh."""
         await self._refresh_shopping_lists()
 
-    async def rate_recipe(self, recipe_id: int, rating: int) -> None:
+    async def rate_recipe(
+        self,
+        recipe_id: int | None,
+        rating: int,
+        recipe_url: str | None = None,
+        recipe_title: str | None = None,
+    ) -> None:
         """Rate a recipe via API.
 
         Args:
             recipe_id: The database ID of the recipe
             rating: Rating from 1 to 5 stars
+            recipe_url: Optional URL fallback for recipes without DB ID
+            recipe_title: Optional title fallback for URL-based rating
         """
         try:
             async with aiohttp.ClientSession() as session:
+                if recipe_id is not None:
+                    path = f"{self.api_url}/api/recipes/{recipe_id}/rate"
+                    payload: dict[str, Any] = {"rating": rating}
+                else:
+                    if not recipe_url:
+                        raise UpdateFailed("Missing recipe_id and recipe_url for rating")
+                    path = f"{self.api_url}/api/recipes/rate-by-url"
+                    payload = {
+                        "recipe_url": recipe_url,
+                        "recipe_title": recipe_title,
+                        "rating": rating,
+                    }
+
                 async with session.post(
-                    f"{self.api_url}/api/recipes/{recipe_id}/rate",
+                    path,
                     headers=self._get_headers(),
-                    json={"rating": rating},
+                    json=payload,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         _LOGGER.error("Failed to rate recipe: %s", error_text)
                         raise UpdateFailed(f"Failed to rate recipe: {error_text}")
+            self._cache.pop("recipe_ratings", None)
+            await self.async_request_refresh()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error rating recipe: %s", err)
             raise UpdateFailed(f"Error rating recipe: {err}") from err

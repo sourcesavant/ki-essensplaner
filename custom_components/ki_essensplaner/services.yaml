@@ -4,13 +4,27 @@ rate_recipe:
   fields:
     recipe_id:
       name: Recipe ID
-      description: The database ID of the recipe to rate
-      required: true
+      description: The database ID of the recipe to rate (optional when recipe_url is provided)
+      required: false
       example: 123
       selector:
         number:
           min: 1
           mode: box
+    recipe_url:
+      name: Recipe URL
+      description: Recipe URL fallback for unrated recipes without DB ID
+      required: false
+      example: "https://eatsmarter.de/rezepte/beispiel"
+      selector:
+        text:
+    recipe_title:
+      name: Recipe Title
+      description: Optional title used if recipe must be created from URL first
+      required: false
+      example: "Käsefondue"
+      selector:
+        text:
     rating:
       name: Rating
       description: Rating from 1 to 5 stars (1=blacklist, 5=favorite)

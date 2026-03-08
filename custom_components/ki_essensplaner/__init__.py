@@ -17,10 +17,24 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 # Service schemas
-RATE_RECIPE_SCHEMA = vol.Schema({
-    vol.Required("recipe_id"): cv.positive_int,
-    vol.Required("rating"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
-})
+def _validate_rate_recipe_data(data: dict) -> dict:
+    """Require recipe_id or recipe_url for rating."""
+    if not data.get("recipe_id") and not data.get("recipe_url"):
+        raise vol.Invalid("Either recipe_id or recipe_url is required")
+    return data
+
+
+RATE_RECIPE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional("recipe_id"): cv.positive_int,
+            vol.Optional("recipe_url"): cv.string,
+            vol.Optional("recipe_title"): cv.string,
+            vol.Required("rating"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+        }
+    ),
+    _validate_rate_recipe_data,
+)
 
 EXCLUDE_INGREDIENT_SCHEMA = vol.Schema({
     vol.Required("ingredient_name"): cv.string,
@@ -121,13 +135,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle_rate_recipe(call: ServiceCall) -> None:
         """Handle rate_recipe service call."""
-        recipe_id = call.data["recipe_id"]
+        recipe_id = call.data.get("recipe_id")
+        recipe_url = call.data.get("recipe_url")
+        recipe_title = call.data.get("recipe_title")
         rating = call.data["rating"]
 
         # Get the first available coordinator
         # In single-user setup, there's only one
         coordinator = next(iter(hass.data[DOMAIN].values()))
-        await coordinator.rate_recipe(recipe_id, rating)
+        await coordinator.rate_recipe(
+            recipe_id=recipe_id,
+            rating=rating,
+            recipe_url=recipe_url,
+            recipe_title=recipe_title,
+        )
 
     async def handle_exclude_ingredient(call: ServiceCall) -> None:
         """Handle exclude_ingredient service call."""

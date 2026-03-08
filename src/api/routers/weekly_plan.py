@@ -299,7 +299,7 @@ def _build_meal_plan(plan: WeeklyRecommendation) -> tuple[MealPlanCreate, int, i
                 day_of_week=day_of_week,
                 slot=meal_slot,
                 recipe_id=recipe.recipe_id,
-                recipe_title=None if recipe.recipe_id else recipe.title,
+                recipe_title=None if recipe.recipe_id else (recipe.url or recipe.title),
             )
         )
 

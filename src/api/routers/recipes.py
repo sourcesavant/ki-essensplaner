@@ -7,6 +7,7 @@ from src.api.schemas.recipes import (
     ExcludeIngredientRequest,
     ExcludeIngredientResponse,
     ExcludedIngredientsResponse,
+    RateRecipeByUrlRequest,
     RateRecipeRequest,
     RecipeRatingResponse,
 )
@@ -15,11 +16,14 @@ from src.core.database import (
     get_all_ratings,
     get_excluded_ingredients,
     get_recipe,
+    get_recipe_by_url,
     get_recipe_book,
     get_recipe_rating,
     rate_recipe,
     remove_excluded_ingredient,
+    upsert_recipe,
 )
+from src.models.recipe import RecipeCreate
 from src.scrapers.recipe_fetcher import fetch_all_recipes
 
 router = APIRouter(prefix="/api", tags=["recipes"])
@@ -54,6 +58,41 @@ def rate_recipe_endpoint(
     try:
         rate_recipe(recipe_id, request.rating)
         return RecipeRatingResponse(recipe_id=recipe_id, rating=request.rating)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
+        )
+
+
+@router.post("/recipes/rate-by-url", response_model=RecipeRatingResponse)
+def rate_recipe_by_url_endpoint(
+    request: RateRecipeByUrlRequest,
+    _token: str = Depends(verify_token),
+) -> RecipeRatingResponse:
+    """Rate a recipe by URL, creating a DB row first if needed."""
+    recipe_url = request.recipe_url.strip()
+    if not recipe_url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="recipe_url must start with http:// or https://",
+        )
+
+    recipe = get_recipe_by_url(recipe_url)
+    if recipe is None:
+        title = (request.recipe_title or "").strip() or recipe_url
+        recipe = upsert_recipe(
+            RecipeCreate(
+                title=title,
+                source="eatsmarter",
+                source_url=recipe_url,
+                ingredients=[],
+            )
+        )
+
+    try:
+        rate_recipe(recipe.id, request.rating)
+        return RecipeRatingResponse(recipe_id=recipe.id, rating=request.rating)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
