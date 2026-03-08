@@ -447,6 +447,10 @@ def _remove_selected_recipe_duplicates_from_alternatives(
             if key is None or key == own_selected_key or key not in selected_keys:
                 filtered.append(recipe)
         slot_rec.recommendations = filtered
+        if not slot_rec.recommendations:
+            slot_rec.selected_index = -1
+        elif slot_rec.selected_index < 0 or slot_rec.selected_index >= len(slot_rec.recommendations):
+            slot_rec.selected_index = 0
 
 
 def _score_favorites(

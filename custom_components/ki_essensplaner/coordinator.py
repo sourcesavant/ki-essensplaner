@@ -161,8 +161,15 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "/api/recipes/ratings",
                     not_found_none=True,
                 ) or {}
-                # JSON always serializes dict keys as strings; normalize back to int
-                data["recipe_ratings"] = {int(k): v for k, v in _raw_ratings.items()}
+                # JSON serializes dict keys as strings; keep parsing resilient.
+                parsed_ratings: dict[int, int] = {}
+                if isinstance(_raw_ratings, dict):
+                    for key, value in _raw_ratings.items():
+                        try:
+                            parsed_ratings[int(key)] = int(value)
+                        except (TypeError, ValueError):
+                            _LOGGER.debug("Skipping invalid rating entry: %s=%s", key, value)
+                data["recipe_ratings"] = parsed_ratings
                 data["recipe_book"] = await self._fetch_cached_json(
                     session,
                     "recipe_book",
@@ -175,7 +182,12 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         except aiohttp.ClientError as err:
             _LOGGER.error("Error connecting to API: %s", err)
-            # Return cached data if available, otherwise raise
+            # Return last coordinator data if available, otherwise health fallback.
+            if self.data is not None:
+                cached = self.data.copy()
+                cached["cached"] = True
+                _LOGGER.info("Using last coordinator data due to connection error")
+                return self._merge_cached_extras(cached)
             if self._last_valid_data is not None:
                 cached = self._last_valid_data.copy()
                 cached["cached"] = True
@@ -184,7 +196,12 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"Error connecting to API: {err}") from err
         except Exception as err:
             _LOGGER.error("Unexpected error: %s", err)
-            # Return cached data if available, otherwise raise
+            # Return last coordinator data if available, otherwise health fallback.
+            if self.data is not None:
+                cached = self.data.copy()
+                cached["cached"] = True
+                _LOGGER.info("Using last coordinator data due to unexpected error")
+                return self._merge_cached_extras(cached)
             if self._last_valid_data is not None:
                 cached = self._last_valid_data.copy()
                 cached["cached"] = True
