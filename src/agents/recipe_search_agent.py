@@ -19,6 +19,7 @@ import time
 from collections import defaultdict
 from dataclasses import replace
 from datetime import date
+from urllib.parse import urlsplit, urlunsplit
 
 from src.agents.models import (
     MEAL_SLOTS,
@@ -418,8 +419,8 @@ def _remove_selected_recipe_duplicates_from_alternatives(
     recommendations: list[SlotRecommendation],
 ) -> None:
     """Ensure selected recipes of other slots are not shown as alternatives."""
-    selected_keys_by_slot: dict[tuple[str, str], tuple[str, str | int]] = {}
-    selected_keys: set[tuple[str, str | int]] = set()
+    selected_aliases_by_slot: dict[tuple[str, str], set[tuple[str, str | int]]] = {}
+    selected_aliases: set[tuple[str, str | int]] = set()
 
     for slot_rec in recommendations:
         if not slot_rec.recommendations:
@@ -430,21 +431,27 @@ def _remove_selected_recipe_duplicates_from_alternatives(
             selected = slot_rec.recommendations[0]
             slot_rec.selected_index = 0
 
-        selected_key = _recipe_key(selected)
-        if selected_key is None:
+        recipe_aliases = _recipe_alias_keys(selected)
+        if not recipe_aliases:
             continue
         slot_key = (slot_rec.weekday, slot_rec.slot)
-        selected_keys_by_slot[slot_key] = selected_key
-        selected_keys.add(selected_key)
+        selected_aliases_by_slot[slot_key] = recipe_aliases
+        selected_aliases.update(recipe_aliases)
 
     for slot_rec in recommendations:
         slot_key = (slot_rec.weekday, slot_rec.slot)
-        own_selected_key = selected_keys_by_slot.get(slot_key)
+        own_selected_aliases = selected_aliases_by_slot.get(slot_key, set())
 
         filtered: list[ScoredRecipe] = []
         for recipe in slot_rec.recommendations:
-            key = _recipe_key(recipe)
-            if key is None or key == own_selected_key or key not in selected_keys:
+            alias_keys = _recipe_alias_keys(recipe)
+            if not alias_keys:
+                filtered.append(recipe)
+                continue
+            if alias_keys & own_selected_aliases:
+                filtered.append(recipe)
+                continue
+            if not (alias_keys & selected_aliases):
                 filtered.append(recipe)
         slot_rec.recommendations = filtered
         if not slot_rec.recommendations:
@@ -463,25 +470,27 @@ def _top_up_slot_recommendations(
     """Refill each slot recommendation list up to target_count where possible."""
     banned = banned_keys or set()
 
-    selected_keys_by_slot: dict[tuple[str, str], tuple[str, str | int]] = {}
-    selected_keys: set[tuple[str, str | int]] = set()
+    selected_aliases_by_slot: dict[tuple[str, str], set[tuple[str, str | int]]] = {}
+    selected_aliases: set[tuple[str, str | int]] = set()
     for slot_rec in recommendations:
         if not slot_rec.recommendations:
             continue
         idx = slot_rec.selected_index if 0 <= slot_rec.selected_index < len(slot_rec.recommendations) else 0
         slot_rec.selected_index = idx
         selected = slot_rec.recommendations[idx]
-        key = _recipe_key(selected)
-        if key is None:
+        alias_keys = _recipe_alias_keys(selected)
+        if not alias_keys:
             continue
         slot_key = (slot_rec.weekday, slot_rec.slot)
-        selected_keys_by_slot[slot_key] = key
-        selected_keys.add(key)
+        selected_aliases_by_slot[slot_key] = alias_keys
+        selected_aliases.update(alias_keys)
 
     for slot_rec in recommendations:
         slot_key = (slot_rec.weekday, slot_rec.slot)
-        own_selected_key = selected_keys_by_slot.get(slot_key)
-        existing_keys = {_recipe_key(r) for r in slot_rec.recommendations if _recipe_key(r) is not None}
+        own_selected_aliases = selected_aliases_by_slot.get(slot_key, set())
+        existing_keys: set[tuple[str, str | int]] = set()
+        for existing in slot_rec.recommendations:
+            existing_keys.update(_recipe_alias_keys(existing))
 
         if len(slot_rec.recommendations) >= target_count:
             continue
@@ -489,13 +498,17 @@ def _top_up_slot_recommendations(
         for candidate in fallback_candidates:
             if len(slot_rec.recommendations) >= target_count:
                 break
-            key = _recipe_key(candidate)
-            if key is None or key in banned or key in existing_keys:
+            alias_keys = _recipe_alias_keys(candidate)
+            if not alias_keys:
                 continue
-            if key in selected_keys and key != own_selected_key:
+            if alias_keys & banned:
+                continue
+            if alias_keys & existing_keys:
+                continue
+            if (alias_keys & selected_aliases) and not (alias_keys & own_selected_aliases):
                 continue
             slot_rec.recommendations.append(candidate)
-            existing_keys.add(key)
+            existing_keys.update(alias_keys)
 
         if not slot_rec.recommendations:
             slot_rec.selected_index = -1
@@ -649,18 +662,57 @@ def _assign_recipes_to_slots(
     return recommendations
 
 
+def _normalize_recipe_url(url: str | None) -> str | None:
+    """Normalize URLs to improve duplicate detection."""
+    if not url:
+        return None
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return url.strip()
+
+    scheme = parsed.scheme.lower() or "https"
+    netloc = parsed.netloc.lower()
+    path = parsed.path.rstrip("/") or "/"
+    # Ignore query/fragment for deduplication to catch tracking variants.
+    return urlunsplit((scheme, netloc, path, "", ""))
+
+
+def _normalize_recipe_title(title: str | None) -> str | None:
+    if not title:
+        return None
+    normalized = " ".join(title.strip().lower().split())
+    return normalized or None
+
+
+def _recipe_alias_keys(recipe: ScoredRecipe) -> set[tuple[str, str | int]]:
+    """Return all stable keys that can identify the same recipe."""
+    keys: set[tuple[str, str | int]] = set()
+    normalized_url = _normalize_recipe_url(recipe.url)
+    if normalized_url:
+        keys.add(("url", normalized_url))
+    if recipe.recipe_id is not None:
+        keys.add(("id", int(recipe.recipe_id)))
+    normalized_title = _normalize_recipe_title(recipe.title)
+    if normalized_title:
+        keys.add(("title", normalized_title))
+    return keys
+
+
 def _recipe_key(recipe: ScoredRecipe) -> tuple[str, str | int] | None:
     """Build a stable key to detect duplicate recipes across slots.
 
     Uses URL as primary key to ensure consistency across new and saved recipes.
     Falls back to recipe_id if no URL, then title.
     """
-    if recipe.url:
-        return ("url", recipe.url)
+    normalized_url = _normalize_recipe_url(recipe.url)
+    if normalized_url:
+        return ("url", normalized_url)
     if recipe.recipe_id is not None:
-        return ("id", recipe.recipe_id)
-    if recipe.title:
-        return ("title", recipe.title)
+        return ("id", int(recipe.recipe_id))
+    normalized_title = _normalize_recipe_title(recipe.title)
+    if normalized_title:
+        return ("title", normalized_title)
     return None
 
 
@@ -713,12 +765,14 @@ def _build_recipe_recency_map(week_history: list[dict]) -> dict[tuple[str, str |
             title = recipe.get("title")
 
             key: tuple[str, str | int] | None = None
-            if url:
-                key = ("url", url)
+            normalized_url = _normalize_recipe_url(url)
+            normalized_title = _normalize_recipe_title(title)
+            if normalized_url:
+                key = ("url", normalized_url)
             elif recipe_id is not None:
-                key = ("id", recipe_id)
-            elif title:
-                key = ("title", title)
+                key = ("id", int(recipe_id))
+            elif normalized_title:
+                key = ("title", normalized_title)
 
             if key is None or key in recency:
                 continue
@@ -795,9 +849,7 @@ def _get_last_plan_recipe_keys(plan: WeeklyRecommendation | None) -> set[tuple[s
     keys: set[tuple[str, str | int]] = set()
     for slot in plan.slots:
         for recipe in slot.recommendations:  # alle 5
-            key = _recipe_key(recipe)
-            if key is not None:
-                keys.add(key)
+            keys.update(_recipe_alias_keys(recipe))
     return keys
 
 
@@ -832,8 +884,8 @@ def _select_unique_recipes(
     planned_reuse_slots: set[tuple[str, str]],
     banned_keys: set[tuple[str, str | int]] | None = None,
 ) -> None:
-    """Pick unique default selections unless allowed by multi-day groups."""
-    used_by_key: dict[tuple[str, str | int], list[tuple[str, str]]] = {}
+    """Pick unique default selections across slots."""
+    used_aliases: set[tuple[str, str | int]] = set()
     banned_keys = banned_keys or set()
 
     for slot_rec in recommendations:
@@ -846,30 +898,22 @@ def _select_unique_recipes(
         chosen_index = -1
         found_allowed = False
         for idx, recipe in enumerate(slot_rec.recommendations):
-            key = _recipe_key(recipe)
-            if key is None:
+            alias_keys = _recipe_alias_keys(recipe)
+            if not alias_keys:
                 continue
-            if key in banned_keys:
+            if alias_keys & banned_keys:
                 continue
-
-            if key not in used_by_key:
-                chosen_index = idx
-                found_allowed = True
-                break
-
-            current_group = group_id_by_slot.get(slot_key)
-            if current_group is not None:
-                used_slots = used_by_key.get(key, [])
-                if used_slots and all(group_id_by_slot.get(s) == current_group for s in used_slots):
-                    chosen_index = idx
-                    found_allowed = True
-                    break
+            if alias_keys & used_aliases:
+                continue
+            chosen_index = idx
+            found_allowed = True
+            break
 
         if not found_allowed:
             # Keep a safe fallback: any non-banned recommendation.
             for idx, recipe in enumerate(slot_rec.recommendations):
-                key = _recipe_key(recipe)
-                if key is None or key in banned_keys:
+                alias_keys = _recipe_alias_keys(recipe)
+                if not alias_keys or alias_keys & banned_keys:
                     continue
                 chosen_index = idx
                 found_allowed = True
@@ -878,9 +922,7 @@ def _select_unique_recipes(
         slot_rec.selected_index = chosen_index
         if slot_rec.recommendations and found_allowed:
             chosen = slot_rec.recommendations[chosen_index]
-            chosen_key = _recipe_key(chosen)
-            if chosen_key is not None:
-                used_by_key.setdefault(chosen_key, []).append(slot_key)
+            used_aliases.update(_recipe_alias_keys(chosen))
 
 
 def _filter_slot_recommendations_by_banned_keys(
@@ -895,7 +937,7 @@ def _filter_slot_recommendations_by_banned_keys(
         slot_rec.recommendations = [
             recipe
             for recipe in slot_rec.recommendations
-            if (_recipe_key(recipe) not in banned_keys)
+            if not (_recipe_alias_keys(recipe) & banned_keys)
         ]
 
 
@@ -1035,7 +1077,11 @@ def run_search_agent(
     # Build banned keys from previous plan (if provided) or by loading saved plan
     if exclude_recipe_urls:
         # Use explicitly provided exclusion list (from API)
-        banned_keys = {("url", url) for url in exclude_recipe_urls}
+        banned_keys = {
+            ("url", normalized)
+            for normalized in (_normalize_recipe_url(url) for url in exclude_recipe_urls)
+            if normalized
+        }
         print(f"\n   Excluding {len(banned_keys)} recipes from previous week")
     else:
         # Fallback: load previous plan from disk (for backward compatibility)
@@ -1059,10 +1105,14 @@ def run_search_agent(
         key=lambda r: r.score,
         reverse=True,
     ):
-        key = _recipe_key(recipe)
-        if key is None or key in seen_fallback_keys or key in banned_keys:
+        alias_keys = _recipe_alias_keys(recipe)
+        if not alias_keys:
             continue
-        seen_fallback_keys.add(key)
+        if alias_keys & banned_keys:
+            continue
+        if alias_keys & seen_fallback_keys:
+            continue
+        seen_fallback_keys.update(alias_keys)
         fallback_pool.append(recipe)
     _top_up_slot_recommendations(
         slot_recommendations,
