@@ -138,6 +138,13 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "/api/shopping-list/split",
                     not_found_none=True,
                 )
+                data["shopping_checked"] = await self._fetch_cached_json(
+                    session,
+                    "shopping_checked",
+                    "GET",
+                    "/api/shopping-list/checked",
+                    not_found_none=True,
+                ) or {"checked_items": []}
                 _raw_ratings = await self._fetch_cached_json(
                     session,
                     "recipe_ratings",
@@ -850,6 +857,45 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.error("Error fetching shopping list: %s", err)
             return None
+
+    async def toggle_shopping_item(self, item_key: str, checked: bool) -> None:
+        """Mark or unmark a shopping item as checked."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/api/shopping-list/checked",
+                    headers=self._get_headers(),
+                    json={"item_key": item_key, "checked": checked},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status not in (200, 204):
+                        _LOGGER.error(
+                            "Failed to toggle shopping item: %s", await response.text()
+                        )
+                        return
+            self._cache.pop("shopping_checked", None)
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error toggling shopping item: %s", err)
+
+    async def clear_checked_items(self) -> None:
+        """Clear all checked shopping items for the current week."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.api_url}/api/shopping-list/checked",
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status not in (200, 204):
+                        _LOGGER.error(
+                            "Failed to clear checked items: %s", await response.text()
+                        )
+                        return
+            self._cache.pop("shopping_checked", None)
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error clearing checked items: %s", err)
 
     async def get_split_shopping_list(self) -> dict[str, Any] | None:
         """Get shopping list split by store (Bioland/Rewe).

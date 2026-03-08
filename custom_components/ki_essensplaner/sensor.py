@@ -717,6 +717,11 @@ class SkippedSlotsSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntit
         }
 
 
+def _shopping_item_key(item: dict) -> str:
+    """Stable, cross-device key for a shopping item."""
+    return f"{(item.get('ingredient') or '').lower()}_{item.get('unit') or ''}"
+
+
 class ShoppingListCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
     """Sensor for total shopping list item count."""
 
@@ -803,8 +808,15 @@ class BiolandCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntit
                 "week_start": None,
             }
 
+        checked_set = set(
+            (self.coordinator.data.get("shopping_checked") or {}).get("checked_items", [])
+        )
+        items = [
+            {**item, "checked": _shopping_item_key(item) in checked_set}
+            for item in split.get("bioland", [])
+        ]
         return {
-            "items": split.get("bioland", []),
+            "items": items,
             "week_start": split.get("week_start"),
         }
 
@@ -847,8 +859,15 @@ class ReweCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
                 "week_start": None,
             }
 
+        checked_set = set(
+            (self.coordinator.data.get("shopping_checked") or {}).get("checked_items", [])
+        )
+        items = [
+            {**item, "checked": _shopping_item_key(item) in checked_set}
+            for item in split.get("rewe", [])
+        ]
         return {
-            "items": split.get("rewe", []),
+            "items": items,
             "week_start": split.get("week_start"),
         }
 

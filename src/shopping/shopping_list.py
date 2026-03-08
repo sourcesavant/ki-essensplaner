@@ -443,7 +443,9 @@ def generate_shopping_list(
                     unit = _normalize_unit(ing["unit"])
                     amount = ing["amount"]
 
-                    key = (ingredient, unit)
+                    key = (ingredient.lower(), unit)
+
+                    aggregated[key].setdefault("display_name", ingredient)
 
                     if amount:
                         # Scale the amount
@@ -476,12 +478,15 @@ def generate_shopping_list(
 
     # Convert to ShoppingItems with rounded amounts
     items = []
-    for (ingredient, unit), data in aggregated.items():
+    for (ingredient_lower, unit), data in aggregated.items():
         if data["has_amount"]:
             # Round to sensible values
             amount = round_amount(data["amount"], unit)
         else:
             amount = None
+
+        # Use original casing for display; ingredient_lower for aggregation key
+        ingredient = data.get("display_name", ingredient_lower)
 
         items.append(
             ShoppingItem(

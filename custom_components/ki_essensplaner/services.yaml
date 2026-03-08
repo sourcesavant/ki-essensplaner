@@ -355,3 +355,25 @@ fetch_recipes:
           max: 5.0
           step: 0.1
           mode: slider
+
+toggle_shopping_item:
+  name: Einkaufsitem abhaken
+  description: Markiert ein Einkaufslistenelement als abgehakt oder nicht abgehakt. Wird geräteübergreifend synchronisiert.
+  fields:
+    item_key:
+      name: Item Key
+      description: Stabiler Schlüssel des Items (z.B. "gemüsebrühe_milliliter")
+      required: true
+      example: "gemüsebrühe_milliliter"
+      selector:
+        text:
+    checked:
+      name: Abgehakt
+      description: true = abhaken, false = Häkchen entfernen
+      required: true
+      selector:
+        boolean:
+
+clear_checked_items:
+  name: Alle Häkchen entfernen
+  description: Entfernt alle Häkchen auf der Einkaufsliste für die aktuelle Woche.

@@ -26,3 +26,10 @@ class SplitShoppingListResponse(BaseModel):
     week_start: str
     bioland: list[ShoppingItemResponse] = Field(default_factory=list)
     rewe: list[ShoppingItemResponse] = Field(default_factory=list)
+
+
+class CheckedItemsResponse(BaseModel):
+    """Checked item keys for a given week."""
+
+    week_start: str
+    checked_items: list[str] = Field(default_factory=list)

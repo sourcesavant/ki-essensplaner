@@ -90,6 +90,11 @@ SET_DISPLAYED_WEEK_SCHEMA = vol.Schema({
     vol.Optional("week_start"): cv.string,
 })
 
+TOGGLE_SHOPPING_ITEM_SCHEMA = vol.Schema({
+    vol.Required("item_key"): cv.string,
+    vol.Required("checked"): cv.boolean,
+})
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up KI-Essensplaner from a config entry."""
@@ -378,6 +383,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.set_displayed_week(week_start)
 
+    async def handle_toggle_shopping_item(call: ServiceCall) -> None:
+        """Handle toggle_shopping_item service call."""
+        item_key = call.data["item_key"]
+        checked = call.data["checked"]
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.toggle_shopping_item(item_key, checked)
+
+    async def handle_clear_checked_items(call: ServiceCall) -> None:
+        """Handle clear_checked_items service call."""
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.clear_checked_items()
+
     # Register services
     hass.services.async_register(
         DOMAIN, "rate_recipe", handle_rate_recipe, schema=RATE_RECIPE_SCHEMA
@@ -448,6 +465,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         handle_set_displayed_week,
         schema=SET_DISPLAYED_WEEK_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        "toggle_shopping_item",
+        handle_toggle_shopping_item,
+        schema=TOGGLE_SHOPPING_ITEM_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "clear_checked_items",
+        handle_clear_checked_items,
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -475,5 +503,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "fetch_recipes")
             hass.services.async_remove(DOMAIN, "complete_week")
             hass.services.async_remove(DOMAIN, "set_displayed_week")
+            hass.services.async_remove(DOMAIN, "toggle_shopping_item")
+            hass.services.async_remove(DOMAIN, "clear_checked_items")
 
     return unload_ok

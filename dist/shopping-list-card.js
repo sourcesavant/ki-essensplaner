@@ -14,6 +14,7 @@ class ShoppingListCard extends HTMLElement {
     this._activeTab = 'bioland';
     this._checkedItems = new Set();
     this._lastRenderKey = null;
+    this._lastListKey = null;
   }
 
   setConfig(config) {
@@ -59,19 +60,30 @@ class ShoppingListCard extends HTMLElement {
     this.render();
   }
 
+  _itemKey(item) {
+    return `${(item.ingredient || '').toLowerCase()}_${item.unit || ''}`;
+  }
+
   _toggleItem(itemKey) {
-    if (this._checkedItems.has(itemKey)) {
-      this._checkedItems.delete(itemKey);
-    } else {
+    const newChecked = !this._checkedItems.has(itemKey);
+    if (newChecked) {
       this._checkedItems.add(itemKey);
+    } else {
+      this._checkedItems.delete(itemKey);
     }
+    // Optimistic UI update
     const itemEl = this.shadowRoot?.querySelector(`.item[data-item-key="${itemKey}"]`);
     if (itemEl) {
-      itemEl.classList.toggle('checked', this._checkedItems.has(itemKey));
+      itemEl.classList.toggle('checked', newChecked);
       const checkbox = itemEl.querySelector('input[type="checkbox"]');
-      if (checkbox) checkbox.checked = this._checkedItems.has(itemKey);
+      if (checkbox) checkbox.checked = newChecked;
     }
     this._updateCheckedUi();
+    // Persist via HA service
+    this._hass.callService('ki_essensplaner', 'toggle_shopping_item', {
+      item_key: itemKey,
+      checked: newChecked,
+    });
   }
 
   _clearChecked() {
@@ -85,6 +97,8 @@ class ShoppingListCard extends HTMLElement {
       });
     }
     this._updateCheckedUi();
+    // Persist via HA service
+    this._hass.callService('ki_essensplaner', 'clear_checked_items', {});
   }
 
   _updateCheckedUi() {
@@ -94,8 +108,8 @@ class ShoppingListCard extends HTMLElement {
     const reweItems = reweState?.attributes?.items || [];
     const biolandCount = biolandItems.length;
     const reweCount = reweItems.length;
-    const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
-    const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
+    const biolandChecked = biolandItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
+    const reweChecked = reweItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
 
     const clearBtn = this.shadowRoot?.querySelector('.action-button.secondary');
     if (clearBtn) {
@@ -112,8 +126,8 @@ class ShoppingListCard extends HTMLElement {
     }
   }
 
-  _renderItem(item, index, store) {
-    const itemKey = `${store}_${index}`;
+  _renderItem(item) {
+    const itemKey = this._itemKey(item);
     const isChecked = this._checkedItems.has(itemKey);
     const amount = item.amount ? `${item.amount}` : '';
     const unit = item.unit || '';
@@ -162,15 +176,37 @@ class ShoppingListCard extends HTMLElement {
 
     const hasItems = (biolandCount + reweCount) > 0 || totalCount > 0;
 
-    const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
-    const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
+    // Hydration strategy:
+    // - compositionKey tracks which items exist (ingredients + units, no checked state).
+    // - On composition change (new week / plan edit): full reset from server.
+    // - Same composition: one-way merge — add any server-checked items not yet local
+    //   (cross-device adds propagate within the poll interval, ~30s).
+    //   Local unchecks are never overridden, avoiding the race condition where a fast
+    //   double-check loses the second item when the first coordinator refresh arrives.
+    const allItems = [...biolandItems, ...reweItems];
+    const compositionKey = JSON.stringify(allItems.map((i) => this._itemKey(i)));
+    if (compositionKey !== this._lastListKey) {
+      // New week or recipe change → full reset from server state
+      this._lastListKey = compositionKey;
+      this._checkedItems = new Set(
+        allItems.filter((i) => i.checked).map((i) => this._itemKey(i))
+      );
+    } else {
+      // Same list → only add server-checked items (cross-device sync for adds)
+      for (const item of allItems) {
+        if (item.checked) this._checkedItems.add(this._itemKey(item));
+      }
+    }
+
+    const biolandChecked = biolandItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
+    const reweChecked = reweItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
 
     const renderKey = JSON.stringify({
       missing: missingEntities,
       active: this._activeTab,
       totalCount,
       biolandItems,
-      reweItems
+      reweItems,
     });
     if (this._lastRenderKey === renderKey) {
       return;
@@ -347,11 +383,11 @@ class ShoppingListCard extends HTMLElement {
           <div class="item-list">
             ${this._activeTab === 'bioland' ? (
               biolandItems.length > 0
-                ? biolandItems.map((item, i) => this._renderItem(item, i, 'bioland')).join('')
+                ? biolandItems.map((item) => this._renderItem(item)).join('')
                 : '<div class="empty-tab">Keine Bioland-Artikel</div>'
             ) : (
               reweItems.length > 0
-                ? reweItems.map((item, i) => this._renderItem(item, i, 'rewe')).join('')
+                ? reweItems.map((item) => this._renderItem(item)).join('')
                 : '<div class="empty-tab">Keine Rewe-Artikel</div>'
             )}
           </div>

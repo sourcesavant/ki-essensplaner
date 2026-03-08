@@ -1,17 +1,25 @@
 """Shopping list API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from src.agents.models import load_weekly_plan
 from src.api.auth import verify_token
 from src.api.schemas.shopping import (
+    CheckedItemsResponse,
     ShoppingItemResponse,
     ShoppingListResponse,
     SplitShoppingListResponse,
 )
+from src.core.database import clear_checked_items, get_checked_items, set_item_checked
 from src.shopping.shopping_list import generate_shopping_list
 
 router = APIRouter(prefix="/api/shopping-list", tags=["shopping"])
+
+
+class ToggleCheckedRequest(BaseModel):
+    item_key: str
+    checked: bool
 
 
 def _convert_item(item) -> ShoppingItemResponse:
@@ -78,3 +86,38 @@ def get_split_shopping_list(
         bioland=[_convert_item(item) for item in split_list.bioland],
         rewe=[_convert_item(item) for item in split_list.rewe],
     )
+
+
+def _get_current_week_start() -> str:
+    """Return the week_start of the current plan, or raise 404."""
+    plan = load_weekly_plan()
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No weekly plan found.",
+        )
+    return plan.week_start
+
+
+@router.get("/checked", response_model=CheckedItemsResponse)
+def get_checked(_token: str = Depends(verify_token)) -> CheckedItemsResponse:
+    """Return checked item keys for the current week."""
+    week_start = _get_current_week_start()
+    checked = get_checked_items(week_start)
+    return CheckedItemsResponse(week_start=week_start, checked_items=sorted(checked))
+
+
+@router.post("/checked", status_code=status.HTTP_204_NO_CONTENT)
+def toggle_checked(
+    body: ToggleCheckedRequest, _token: str = Depends(verify_token)
+) -> None:
+    """Mark or unmark a shopping item as checked."""
+    week_start = _get_current_week_start()
+    set_item_checked(week_start, body.item_key, body.checked)
+
+
+@router.delete("/checked", status_code=status.HTTP_204_NO_CONTENT)
+def delete_checked(_token: str = Depends(verify_token)) -> None:
+    """Clear all checked items for the current week."""
+    week_start = _get_current_week_start()
+    clear_checked_items(week_start)

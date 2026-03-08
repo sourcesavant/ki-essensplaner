@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS excluded_ingredients (
 );
 
 CREATE INDEX IF NOT EXISTS idx_excluded_ingredients_name ON excluded_ingredients(ingredient_name);
+
+-- Checked items on the shopping list (persistent across reloads)
+CREATE TABLE IF NOT EXISTS shopping_checked_items (
+    item_key  TEXT NOT NULL,
+    week_start TEXT NOT NULL,
+    PRIMARY KEY (item_key, week_start)
+);
 """
 
 
@@ -940,3 +947,40 @@ def is_ingredient_excluded(ingredient_name: str) -> bool:
             (ingredient_name.lower(),),
         ).fetchone()
         return row is not None
+
+
+# Shopping checked items CRUD operations
+
+
+def get_checked_items(week_start: str) -> set[str]:
+    """Get all checked item keys for a given week."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT item_key FROM shopping_checked_items WHERE week_start = ?",
+            (week_start,),
+        ).fetchall()
+        return {row["item_key"] for row in rows}
+
+
+def set_item_checked(week_start: str, item_key: str, checked: bool) -> None:
+    """Set an item as checked or unchecked for a given week."""
+    with get_connection() as conn:
+        if checked:
+            conn.execute(
+                "INSERT OR IGNORE INTO shopping_checked_items (item_key, week_start) VALUES (?, ?)",
+                (item_key, week_start),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM shopping_checked_items WHERE item_key = ? AND week_start = ?",
+                (item_key, week_start),
+            )
+
+
+def clear_checked_items(week_start: str) -> None:
+    """Remove all checked items for a given week."""
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM shopping_checked_items WHERE week_start = ?",
+            (week_start,),
+        )
