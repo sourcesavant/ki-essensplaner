@@ -453,6 +453,56 @@ def _remove_selected_recipe_duplicates_from_alternatives(
             slot_rec.selected_index = 0
 
 
+def _top_up_slot_recommendations(
+    recommendations: list[SlotRecommendation],
+    fallback_candidates: list[ScoredRecipe],
+    *,
+    banned_keys: set[tuple[str, str | int]] | None = None,
+    target_count: int = RECOMMENDATIONS_PER_SLOT,
+) -> None:
+    """Refill each slot recommendation list up to target_count where possible."""
+    banned = banned_keys or set()
+
+    selected_keys_by_slot: dict[tuple[str, str], tuple[str, str | int]] = {}
+    selected_keys: set[tuple[str, str | int]] = set()
+    for slot_rec in recommendations:
+        if not slot_rec.recommendations:
+            continue
+        idx = slot_rec.selected_index if 0 <= slot_rec.selected_index < len(slot_rec.recommendations) else 0
+        slot_rec.selected_index = idx
+        selected = slot_rec.recommendations[idx]
+        key = _recipe_key(selected)
+        if key is None:
+            continue
+        slot_key = (slot_rec.weekday, slot_rec.slot)
+        selected_keys_by_slot[slot_key] = key
+        selected_keys.add(key)
+
+    for slot_rec in recommendations:
+        slot_key = (slot_rec.weekday, slot_rec.slot)
+        own_selected_key = selected_keys_by_slot.get(slot_key)
+        existing_keys = {_recipe_key(r) for r in slot_rec.recommendations if _recipe_key(r) is not None}
+
+        if len(slot_rec.recommendations) >= target_count:
+            continue
+
+        for candidate in fallback_candidates:
+            if len(slot_rec.recommendations) >= target_count:
+                break
+            key = _recipe_key(candidate)
+            if key is None or key in banned or key in existing_keys:
+                continue
+            if key in selected_keys and key != own_selected_key:
+                continue
+            slot_rec.recommendations.append(candidate)
+            existing_keys.add(key)
+
+        if not slot_rec.recommendations:
+            slot_rec.selected_index = -1
+        elif slot_rec.selected_index < 0 or slot_rec.selected_index >= len(slot_rec.recommendations):
+            slot_rec.selected_index = 0
+
+
 def _score_favorites(
     favorites: list[tuple[Recipe, int]],
     context: ScoringContext,
@@ -1002,6 +1052,24 @@ def run_search_agent(
         banned_keys=banned_keys,
     )
     _remove_selected_recipe_duplicates_from_alternatives(slot_recommendations)
+    fallback_pool: list[ScoredRecipe] = []
+    seen_fallback_keys: set[tuple[str, str | int]] = set()
+    for recipe in sorted(
+        [r for slot in slot_recommendations for r in slot.recommendations] + new_recipes + favorites,
+        key=lambda r: r.score,
+        reverse=True,
+    ):
+        key = _recipe_key(recipe)
+        if key is None or key in seen_fallback_keys or key in banned_keys:
+            continue
+        seen_fallback_keys.add(key)
+        fallback_pool.append(recipe)
+    _top_up_slot_recommendations(
+        slot_recommendations,
+        fallback_pool,
+        banned_keys=banned_keys,
+        target_count=RECOMMENDATIONS_PER_SLOT,
+    )
 
     # Calculate stats
     favorites_count = sum(

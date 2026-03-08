@@ -25,8 +25,12 @@ class WeeklyPlanCard extends HTMLElement {
     if (!config.entity) {
       throw new Error('Please define an entity (sensor.essensplaner_weekly_plan_status)');
     }
-    this._config = config;
     this._entityPrefix = this._deriveEntityPrefix(config.entity);
+    this._config = {
+      multi_day_preferences_entity: `${this._entityPrefix}meal_prep_preferences`,
+      skipped_slots_entity: `${this._entityPrefix}skipped_slots`,
+      ...config,
+    };
     this.render();
   }
 
@@ -70,6 +74,18 @@ class WeeklyPlanCard extends HTMLElement {
         if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
           return true;
         }
+      }
+    }
+
+    const extraEntities = [
+      this._config.multi_day_preferences_entity,
+      this._config.skipped_slots_entity,
+    ];
+    for (const entityId of extraEntities) {
+      const oldState = oldHass.states[entityId];
+      const newState = newHass.states[entityId];
+      if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
+        return true;
       }
     }
 
@@ -226,6 +242,58 @@ class WeeklyPlanCard extends HTMLElement {
     this._setDisplayedWeek('current');
   }
 
+  _getRuleSelection(prefix) {
+    const day = this.shadowRoot?.querySelector(`#${prefix}-day`)?.value;
+    const slot = this.shadowRoot?.querySelector(`#${prefix}-slot`)?.value;
+    return { day, slot };
+  }
+
+  _addPrepPreference() {
+    const { day, slot } = this._getRuleSelection('prep');
+    const reuseDays = Number(this.shadowRoot?.querySelector('#prep-days')?.value || 1);
+    if (!day || !slot || !Number.isFinite(reuseDays) || reuseDays < 1) return;
+    this._callService('set_multi_day_preferences', {
+      primary_weekday: day,
+      primary_slot: slot,
+      reuse_days: reuseDays,
+    });
+  }
+
+  _removePrepPreference() {
+    const { day, slot } = this._getRuleSelection('prep');
+    if (!day || !slot) return;
+    this._callService('clear_multi_day_preferences', {
+      primary_weekday: day,
+      primary_slot: slot,
+    });
+  }
+
+  _clearAllPrepPreferences() {
+    this._callService('clear_multi_day_preferences', {});
+  }
+
+  _addSkippedSlot() {
+    const { day, slot } = this._getRuleSelection('skip');
+    if (!day || !slot) return;
+    this._callService('set_skip_slot', {
+      weekday: day,
+      slot: slot,
+    });
+  }
+
+  _removeSkippedSlot() {
+    const { day, slot } = this._getRuleSelection('skip');
+    if (!day || !slot) return;
+    this._callService('clear_skip_slots', {
+      weekday: day,
+      slot: slot,
+    });
+  }
+
+  _clearAllSkippedSlots() {
+    this._callService('clear_skip_slots', {});
+  }
+
   _formatDate(value) {
     if (!value) return '';
     const date = new Date(value);
@@ -369,6 +437,10 @@ class WeeklyPlanCard extends HTMLElement {
     const isHistoryMode = displayMode === 'history';
     const displayedWeekStart = planStatus?.attributes?.displayed_week_start || null;
     const availableWeeks = planStatus?.attributes?.available_weeks || [];
+    const prepPrefsState = this._hass.states[this._config.multi_day_preferences_entity];
+    const skippedState = this._hass.states[this._config.skipped_slots_entity];
+    const prepGroups = prepPrefsState?.attributes?.groups || [];
+    const skippedSlots = skippedState?.attributes?.slots || [];
 
     if (this._isGenerating && this._lastGeneratedAt && generatedAt && generatedAt !== this._lastGeneratedAt) {
       this._isGenerating = false;
@@ -463,6 +535,48 @@ class WeeklyPlanCard extends HTMLElement {
           margin: 0 0 12px;
           font-size: 12px;
           color: var(--secondary-text-color);
+        }
+        .rules-panel {
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          padding: 10px;
+          margin: 0 0 12px;
+          background: var(--secondary-background-color);
+        }
+        .rules-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        .rules-block-title {
+          margin: 0 0 8px;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--primary-text-color);
+          text-transform: uppercase;
+        }
+        .rules-controls {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+        .rules-controls select {
+          min-width: 110px;
+          padding: 4px;
+          border: 1px solid var(--divider-color);
+          border-radius: 4px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-size: 12px;
+        }
+        .rules-list {
+          margin-top: 8px;
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .rules-list .empty {
+          font-style: italic;
         }
         .week-grid {
           display: grid;
@@ -619,6 +733,9 @@ class WeeklyPlanCard extends HTMLElement {
           color: var(--secondary-text-color);
         }
         @media (max-width: 768px) {
+          .rules-grid {
+            grid-template-columns: 1fr;
+          }
           .week-grid {
             grid-template-columns: 1fr;
           }
@@ -667,6 +784,56 @@ class WeeklyPlanCard extends HTMLElement {
         </div>
         ${isHistoryMode ? `<div class="status-note">Historische Woche (${this._formatDate(displayedWeekStart)}) - nur Anzeige.</div>` : ''}
         ${this._isGenerating ? `<div class="status-note">Generierung laeuft ...</div>` : ''}
+        ${!isHistoryMode ? `
+          <div class="rules-panel">
+            <div class="rules-grid">
+              <div>
+                <p class="rules-block-title">Vorkochen (fuer naechste Generierung)</p>
+                <div class="rules-controls">
+                  <select id="prep-day">
+                    ${weekdays.map((day) => `<option value="${day}">${day}</option>`).join('')}
+                  </select>
+                  <select id="prep-slot">
+                    ${slots.map((slot) => `<option value="${slot}">${slot}</option>`).join('')}
+                  </select>
+                  <select id="prep-days">
+                    ${[1,2,3,4,5,6].map((d) => `<option value="${d}">${d} Tag${d > 1 ? 'e' : ''}</option>`).join('')}
+                  </select>
+                  <button class="action-button secondary" onclick="this.getRootNode().host._addPrepPreference()">Setzen</button>
+                  <button class="action-button secondary" onclick="this.getRootNode().host._removePrepPreference()">Entfernen</button>
+                  <button class="action-button secondary" onclick="this.getRootNode().host._clearAllPrepPreferences()">Alle loeschen</button>
+                </div>
+                <div class="rules-list">
+                  ${prepGroups.length
+                    ? prepGroups.map((g) => {
+                        const reuseCount = (g.reuse_slots || []).length;
+                        return `<div>${g.primary_weekday} ${g.primary_slot} -> +${reuseCount} Tag${reuseCount !== 1 ? 'e' : ''}</div>`;
+                      }).join('')
+                    : '<div class="empty">Keine Vorkoch-Regeln gesetzt.</div>'}
+                </div>
+              </div>
+              <div>
+                <p class="rules-block-title">Kein Rezept fuer Slots</p>
+                <div class="rules-controls">
+                  <select id="skip-day">
+                    ${weekdays.map((day) => `<option value="${day}">${day}</option>`).join('')}
+                  </select>
+                  <select id="skip-slot">
+                    ${slots.map((slot) => `<option value="${slot}">${slot}</option>`).join('')}
+                  </select>
+                  <button class="action-button secondary" onclick="this.getRootNode().host._addSkippedSlot()">Hinzufuegen</button>
+                  <button class="action-button secondary" onclick="this.getRootNode().host._removeSkippedSlot()">Entfernen</button>
+                  <button class="action-button secondary" onclick="this.getRootNode().host._clearAllSkippedSlots()">Alle loeschen</button>
+                </div>
+                <div class="rules-list">
+                  ${skippedSlots.length
+                    ? skippedSlots.map((s) => `<div>${s.weekday} ${s.slot}</div>`).join('')
+                    : '<div class="empty">Keine Skip-Slots gesetzt.</div>'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
         ${hasPlan ? `
           <div class="week-grid">
             ${weekdays.map(weekday => `
