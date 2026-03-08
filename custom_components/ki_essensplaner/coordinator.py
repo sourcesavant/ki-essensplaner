@@ -138,6 +138,22 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "/api/shopping-list/split",
                     not_found_none=True,
                 )
+                _raw_ratings = await self._fetch_cached_json(
+                    session,
+                    "recipe_ratings",
+                    "GET",
+                    "/api/recipes/ratings",
+                    not_found_none=True,
+                ) or {}
+                # JSON always serializes dict keys as strings; normalize back to int
+                data["recipe_ratings"] = {int(k): v for k, v in _raw_ratings.items()}
+                data["recipe_book"] = await self._fetch_cached_json(
+                    session,
+                    "recipe_book",
+                    "GET",
+                    "/api/recipes/book",
+                    not_found_none=True,
+                ) or {"recipes": []}
 
                 return data
 

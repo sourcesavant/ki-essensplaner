@@ -18,6 +18,7 @@ Example usage:
 import time
 from collections import defaultdict
 from dataclasses import replace
+from datetime import date
 
 from src.agents.models import (
     MEAL_SLOTS,
@@ -48,6 +49,7 @@ from src.scoring.recipe_scorer import (
     calculate_score,
     is_recipe_viable,
 )
+from src.scoring.seasonality import get_seasonal_ingredients
 
 # Target ratio for favorites vs new recipes
 TARGET_FAVORITES_RATIO = 0.6
@@ -56,7 +58,13 @@ TARGET_FAVORITES_RATIO = 0.6
 RECOMMENDATIONS_PER_SLOT = 5
 
 # Maximum new recipes to fetch details for (per search)
-MAX_DETAIL_FETCH = 10
+MAX_DETAIL_FETCH = 20
+
+# Cuisine keywords for rotating query diversity (rotated by ISO week number)
+CUISINE_KEYWORDS = [
+    "vegetarisch", "mediterran", "asiatisch", "Suppe", "Eintopf",
+    "Pasta", "Fisch", "Hähnchen", "Linsen", "Nudeln",
+]
 
 # Rotation defaults (can be overridden via user config rotation_policy)
 DEFAULT_NO_REPEAT_WEEKS = 1
@@ -124,19 +132,29 @@ def _build_search_queries(
     groups: dict[SlotGroup, list[tuple[str, str]]],
     profile: dict,
 ) -> list[SearchQuery]:
-    """Build search queries for each slot group.
+    """Build diverse search queries for each slot group.
 
-    Uses the top ingredients and avg prep time from the profile for each group.
+    Builds up to 4 queries per group using different ingredient combinations:
+    1. Top 3 profile ingredients (existing behaviour)
+    2. Profile ingredients rank 4-8 (fresh combination)
+    3. 2-3 seasonal ingredients (current month)
+    4. Cuisine keyword rotation + 1-2 profile ingredients
 
     Args:
         groups: Dict mapping SlotGroup to slots
         profile: User preference profile
 
     Returns:
-        List of SearchQuery objects
+        List of SearchQuery objects (up to 4 per slot group)
     """
     queries = []
     weekday_patterns = profile.get("weekday_patterns", {})
+
+    # Seasonal and cuisine context (shared across groups)
+    today = date.today()
+    seasonal = get_seasonal_ingredients(today.month)
+    iso_week = today.isocalendar()[1]
+    cuisine_kw = CUISINE_KEYWORDS[iso_week % len(CUISINE_KEYWORDS)]
 
     for group, slots in groups.items():
         # Collect ingredients and times from all slots in this group
@@ -152,24 +170,52 @@ def _build_search_queries(
             if avg_time:
                 all_times.append(avg_time)
 
-        # Get most common ingredients for this group
+        # Get ranked ingredient list for this group
         ingredient_counts: dict[str, int] = defaultdict(int)
         for ing in all_ingredients:
             ingredient_counts[ing] += 1
 
-        top_ingredients = sorted(
+        ranked_ingredients = sorted(
             ingredient_counts.keys(),
             key=lambda x: ingredient_counts[x],
-            reverse=True
-        )[:5]
+            reverse=True,
+        )
 
         # Average time for group
         avg_time = int(sum(all_times) / len(all_times)) if all_times else None
 
-        if top_ingredients:
+        # Query 1: Top 3 profile ingredients
+        if ranked_ingredients[:3]:
             queries.append(SearchQuery(
                 group=group,
-                ingredients=top_ingredients,
+                ingredients=ranked_ingredients[:3],
+                max_time=avg_time,
+            ))
+
+        # Query 2: Profile ingredients rank 4-8 (fresh combination)
+        secondary = ranked_ingredients[3:6]
+        if secondary:
+            queries.append(SearchQuery(
+                group=group,
+                ingredients=secondary[:3],
+                max_time=avg_time,
+            ))
+
+        # Query 3: Seasonal ingredients (2-3, skipping already used ones)
+        seasonal_candidates = [s for s in seasonal if s not in ranked_ingredients[:6]]
+        if seasonal_candidates:
+            queries.append(SearchQuery(
+                group=group,
+                ingredients=seasonal_candidates[:3],
+                max_time=avg_time,
+            ))
+
+        # Query 4: Cuisine keyword + 1-2 top profile ingredients
+        if ranked_ingredients:
+            cuisine_ings = [cuisine_kw] + ranked_ingredients[:2]
+            queries.append(SearchQuery(
+                group=group,
+                ingredients=cuisine_ings[:3],
                 max_time=avg_time,
             ))
 
@@ -179,12 +225,12 @@ def _build_search_queries(
 def _search_new_recipes(
     queries: list[SearchQuery],
     context: ScoringContext,
-    max_per_query: int = 20,
+    max_per_query: int = 30,
 ) -> list[ScoredRecipe]:
     """Search for new recipes on eatsmarter.
 
     Args:
-        queries: List of search queries (one per slot group)
+        queries: List of search queries (up to 4 per slot group)
         context: Scoring context
         max_per_query: Maximum results per query
 
@@ -616,18 +662,16 @@ def _filter_and_boost_favorites_by_rotation(
 
 
 def _get_last_plan_recipe_keys(plan: WeeklyRecommendation | None) -> set[tuple[str, str | int]]:
-    """Collect recipe keys from a previous plan for exclusion.
-
-    Uses selected recipes only. Alternatives from the previous week are not banned.
-    """
+    """Alle 5 Vorschläge jedes Slots sperren (nicht nur ausgewählte)."""
     if not plan:
         return set()
 
     keys: set[tuple[str, str | int]] = set()
-    for _, _, recipe in plan.get_selected_recipes():
-        key = _recipe_key(recipe)
-        if key is not None:
-            keys.add(key)
+    for slot in plan.slots:
+        for recipe in slot.recommendations:  # alle 5
+            key = _recipe_key(recipe)
+            if key is not None:
+                keys.add(key)
     return keys
 
 

@@ -830,6 +830,36 @@ def get_blacklisted_recipe_ids() -> set[int]:
         return {row["recipe_id"] for row in rows}
 
 
+def get_recipe_book() -> list[dict]:
+    """Alle gekochten/bewerteten Rezepte mit Statistiken.
+
+    Returns:
+        List of recipe dicts with id, title, source_url, prep_time_minutes,
+        calories, rating, rated_at, cook_count, last_cooked
+    """
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT
+                r.id,
+                r.title,
+                r.source_url,
+                r.prep_time_minutes,
+                r.calories,
+                rr.rating,
+                rr.rated_at,
+                COUNT(DISTINCT m.id) AS cook_count,
+                MAX(mp.week_start) AS last_cooked
+            FROM recipes r
+            LEFT JOIN recipe_ratings rr ON rr.recipe_id = r.id
+            LEFT JOIN meals m ON m.recipe_id = r.id
+            LEFT JOIN meal_plans mp ON mp.id = m.meal_plan_id
+            GROUP BY r.id
+            HAVING cook_count > 0 OR rr.recipe_id IS NOT NULL
+            ORDER BY cook_count DESC, last_cooked DESC
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
 def delete_recipe_rating(recipe_id: int) -> bool:
     """Löscht eine Bewertung. Gibt True zurück wenn gelöscht.
 

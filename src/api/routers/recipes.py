@@ -12,8 +12,10 @@ from src.api.schemas.recipes import (
 )
 from src.core.database import (
     exclude_ingredient,
+    get_all_ratings,
     get_excluded_ingredients,
     get_recipe,
+    get_recipe_book,
     get_recipe_rating,
     rate_recipe,
     remove_excluded_ingredient,
@@ -162,6 +164,22 @@ def get_excluded_ingredients_endpoint(
     """
     excluded = get_excluded_ingredients()
     return ExcludedIngredientsResponse(ingredients=sorted(excluded))
+
+
+@router.get("/recipes/ratings")
+def get_all_ratings_endpoint(
+    _token: str = Depends(verify_token),
+) -> dict:
+    """Gibt alle Bewertungen als {recipe_id: rating} zurück."""
+    return get_all_ratings()
+
+
+@router.get("/recipes/book")
+def get_recipe_book_endpoint(
+    _token: str = Depends(verify_token),
+) -> dict:
+    """Rezeptbuch: alle gekochten/bewerteten Rezepte mit Statistiken."""
+    return {"recipes": get_recipe_book()}
 
 
 @router.post("/recipes/fetch")

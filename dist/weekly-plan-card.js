@@ -84,6 +84,10 @@ class WeeklyPlanCard extends HTMLElement {
     this._hass.callService('ki_essensplaner', service, data);
   }
 
+  _rateRecipe(recipeId, rating) {
+    this._callService('rate_recipe', { recipe_id: recipeId, rating: rating });
+  }
+
   _selectRecipe(weekday, slot, recipeIndex) {
     this._callService('select_recipe', {
       weekday: weekday,
@@ -281,6 +285,17 @@ class WeeklyPlanCard extends HTMLElement {
     const newBadge = isNew ? '<span class="badge new">NEU</span>' : '';
     const reuseBadge = isReuseSlot ? '<span class="badge reuse">♻️ Reste</span>' : '';
 
+    const recipeId = attributes.recipe_id;
+    const currentRating = attributes.rating || 0;
+    const starsHtml = recipeId && !readOnly ? `
+      <div class="star-rating">
+        ${[1,2,3,4,5].map(s => `
+          <span class="star ${s <= currentRating ? 'filled' : ''}"
+                onclick="this.getRootNode().host._rateRecipe(${recipeId}, ${s})">&#9733;</span>
+        `).join('')}
+      </div>
+    ` : '';
+
     const alternativesHtml = !isReuseSlot ? `
       <select class="alternatives" onchange="this.getRootNode().host._selectRecipe('${weekday}', '${slot}', this.value)" ${readOnly ? 'disabled' : ''}>
         <option value="-1" ${selectedIndex === -1 ? 'selected' : ''}>Kein Rezept</option>
@@ -313,6 +328,7 @@ class WeeklyPlanCard extends HTMLElement {
             ${newBadge}
             ${reuseBadge}
           </div>
+          ${starsHtml}
           ${alternativesHtml}
         </div>
       </div>
@@ -566,6 +582,24 @@ class WeeklyPlanCard extends HTMLElement {
         }
         .custom-url-feedback.error {
           color: #c62828;
+        }
+        .star-rating {
+          display: flex;
+          gap: 2px;
+          margin-top: 4px;
+        }
+        .star {
+          font-size: 16px;
+          cursor: pointer;
+          color: #ccc;
+          line-height: 1;
+          transition: color 0.1s;
+        }
+        .star.filled {
+          color: #f5a623;
+        }
+        .star:hover {
+          color: #f5a623;
         }
         .no-plan {
           text-align: center;

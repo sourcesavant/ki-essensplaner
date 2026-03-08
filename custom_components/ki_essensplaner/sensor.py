@@ -54,6 +54,9 @@ async def async_setup_entry(
         ShoppingListCountSensor(coordinator, entry),
         BiolandCountSensor(coordinator, entry),
         ReweCountSensor(coordinator, entry),
+
+        # Recipe book sensor
+        RecipeBookSensor(coordinator, entry),
     ]
 
     # Add 14 slot sensors (7 days x 2 meals)
@@ -400,17 +403,20 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
             and 0 <= selected_index < len(recommendations)
         ):
             selected_recipe = recommendations[selected_index]
+            recipe_id = selected_recipe.get("recipe_id")
+            ratings = self.coordinator.data.get("recipe_ratings") or {}
             attrs.update(
                 {
                     # Backward/forward compatible fields for UI cards
                     "recipe_title": selected_recipe.get("title"),
-                    "recipe_id": selected_recipe.get("recipe_id"),
+                    "recipe_id": recipe_id,
                     "recipe_url": selected_recipe.get("url"),
                     "prep_time_minutes": selected_recipe.get("prep_time_minutes"),
                     "calories": selected_recipe.get("calories"),
                     "score": selected_recipe.get("score"),
                     "is_new": selected_recipe.get("is_new"),
                     "ingredients": selected_recipe.get("ingredients", []),
+                    "rating": ratings.get(recipe_id) if recipe_id else None,
                 }
             )
 
@@ -844,4 +850,55 @@ class ReweCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
         return {
             "items": split.get("rewe", []),
             "week_start": split.get("week_start"),
+        }
+
+
+class RecipeBookSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
+    """Sensor exposing all cooked/rated recipes as a recipe book."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Recipe Book"
+    _attr_icon = "mdi:book-open-page-variant"
+
+    def __init__(
+        self,
+        coordinator: EssensplanerCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_recipe_book"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+        }
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of recipes in the book."""
+        book = self.coordinator.data.get("recipe_book") if self.coordinator.data else None
+        if book is None:
+            return 0
+        return len(book.get("recipes", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return recipe book entries."""
+        book = self.coordinator.data.get("recipe_book") if self.coordinator.data else None
+        if book is None:
+            return {"recipes": []}
+        recipes = book.get("recipes", [])
+        return {
+            "recipes": [
+                {
+                    "id": r.get("id"),
+                    "title": r.get("title"),
+                    "url": r.get("source_url"),
+                    "rating": r.get("rating"),
+                    "cook_count": r.get("cook_count", 0),
+                    "last_cooked": r.get("last_cooked"),
+                    "prep_time_minutes": r.get("prep_time_minutes"),
+                    "calories": r.get("calories"),
+                }
+                for r in recipes
+            ]
         }

@@ -27,7 +27,7 @@ from src.core.config import LOCAL_DIR, ensure_directories
 
 # Cache configuration
 CACHE_FILE = LOCAL_DIR / "search_cache.json"
-CACHE_TTL_DAYS = 7
+CACHE_TTL_DAYS = 3
 
 # eatsmarter.de configuration
 BASE_URL = "https://eatsmarter.de"
