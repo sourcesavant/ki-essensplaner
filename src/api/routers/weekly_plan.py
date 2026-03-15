@@ -324,6 +324,17 @@ def _generate_plan_sync(exclude_recipes: list[str] | None = None) -> None:
     try:
         print("[API] Starting weekly plan generation...")
         print(f"[API] Excluding {len(exclude_recipes or [])} recipes from previous week")
+
+        # Auto-archive existing plan before overwriting it
+        from src.agents.models import WEEKLY_PLAN_FILE
+        existing = load_weekly_plan()
+        if existing and existing.week_start and WEEKLY_PLAN_FILE.exists():
+            archive_name = f"weekly_plan_{existing.week_start}_completed.json"
+            archive_path = WEEKLY_PLAN_FILE.parent / archive_name
+            if not archive_path.exists():
+                save_weekly_plan(existing, archive_path)
+                print(f"[API] Auto-archived existing plan to {archive_name}")
+
         preferences = get_multi_day_preferences()
         skipped = get_skipped_slots()
         rotation_policy = get_rotation_policy()
