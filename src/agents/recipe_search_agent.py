@@ -240,27 +240,33 @@ def _search_new_recipes(
     Returns:
         List of scored new recipes
     """
-    from src.scrapers.eatsmarter_search import search_recipes
+    from src.scrapers.eatsmarter_search import search_recipes_batch
 
     all_results: list[ScoredRecipe] = []
     seen_urls: set[str] = set()
 
+    search_payloads: list[dict] = []
     for query in queries:
         print(f"  Searching: {query}")
+        search_payloads.append(
+            {
+                "include_ingredients": query.ingredients[:3],
+                "max_time": query.max_time,
+                "max_results": max_per_query,
+            }
+        )
 
-        # Search with top 2-3 ingredients
-        search_ingredients = query.ingredients[:3]
+    try:
+        batched_results = search_recipes_batch(
+            search_payloads,
+            headless=True,
+            use_cache=True,
+        )
+    except Exception as e:
+        print(f"    Batch search failed: {e}")
+        return all_results
 
-        try:
-            results = search_recipes(
-                include_ingredients=search_ingredients,
-                max_time=query.max_time,
-                max_results=max_per_query,
-                headless=True,
-            )
-        except Exception as e:
-            print(f"    Search failed: {e}")
-            continue
+    for results in batched_results:
 
         # Score and deduplicate results
         for result in results:
@@ -294,8 +300,6 @@ def _search_new_recipes(
                 servings=None,  # Not available yet, will be loaded if selected
             )
             all_results.append(scored)
-
-        time.sleep(0.5)  # Rate limiting between searches
 
     # Sort by score
     all_results.sort(key=lambda x: x.score, reverse=True)
