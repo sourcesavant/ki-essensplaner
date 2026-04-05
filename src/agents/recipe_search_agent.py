@@ -576,6 +576,9 @@ def _assign_recipes_to_slots(
 ) -> list[SlotRecommendation]:
     """Assign recipes to slots with 60/40 favorites/new mix.
 
+    Every recipe appears in at most one slot's recommendation list so the
+    user never sees the same dish as a suggestion in two different slots.
+
     Args:
         slots: List of (weekday, slot) tuples
         favorites: Scored favorite recipes
@@ -589,81 +592,66 @@ def _assign_recipes_to_slots(
     total_slots = len(slots)
     target_favorites = int(total_slots * target_favorites_ratio)
 
-    # Track which recipes have been assigned as top choice
-    used_favorite_ids: set[int] = set()
-    used_new_urls: set[str] = set()
+    # Global pool tracking — each recipe assigned anywhere is removed from
+    # future slots so it never appears in two different slot lists.
+    globally_used: set[tuple[str, str | int]] = set()
+
+    def _pick_next(pool: list[ScoredRecipe]) -> ScoredRecipe | None:
+        """Return the highest-scored recipe from pool not yet globally used."""
+        for recipe in pool:
+            keys = _recipe_alias_keys(recipe)
+            if keys and not (keys & globally_used):
+                return recipe
+        return None
+
+    def _fill_slot(pool: list[ScoredRecipe], top: ScoredRecipe | None) -> list[ScoredRecipe]:
+        """Build a recommendation list of up to RECOMMENDATIONS_PER_SLOT unique recipes."""
+        slot_recipes: list[ScoredRecipe] = []
+        if top is not None:
+            slot_recipes.append(top)
+            globally_used.update(_recipe_alias_keys(top))
+        for recipe in pool:
+            if len(slot_recipes) >= RECOMMENDATIONS_PER_SLOT:
+                break
+            keys = _recipe_alias_keys(recipe)
+            if keys and not (keys & globally_used):
+                slot_recipes.append(recipe)
+                globally_used.update(keys)
+        return slot_recipes
 
     recommendations: list[SlotRecommendation] = []
 
-    # First pass: assign favorites to best-matching slots
+    # First pass: assign favorite-led slots (60 %)
     favorites_assigned = 0
     for weekday, slot in slots:
         if favorites_assigned >= target_favorites:
             break
+        top = _pick_next(favorites)
+        if top is None:
+            break
+        slot_recipes = _fill_slot(favorites, top)
+        favorites_assigned += 1
+        recommendations.append(SlotRecommendation(
+            weekday=weekday,
+            slot=slot,
+            recommendations=slot_recipes,
+        ))
 
-        # Find best unused favorite for this slot
-        best_favorite = None
-        for fav in favorites:
-            if fav.recipe_id and fav.recipe_id not in used_favorite_ids:
-                best_favorite = fav
-                break
-
-        if best_favorite and best_favorite.recipe_id:
-            used_favorite_ids.add(best_favorite.recipe_id)
-            favorites_assigned += 1
-
-            # Get top 5 for this slot (mix of favorites)
-            slot_recipes = [best_favorite]
-            for fav in favorites:
-                if len(slot_recipes) >= RECOMMENDATIONS_PER_SLOT:
-                    break
-                if fav.recipe_id not in used_favorite_ids or fav.recipe_id == best_favorite.recipe_id:
-                    if fav not in slot_recipes:
-                        slot_recipes.append(fav)
-
-            recommendations.append(SlotRecommendation(
-                weekday=weekday,
-                slot=slot,
-                recommendations=slot_recipes[:RECOMMENDATIONS_PER_SLOT],
-            ))
-
-    # Second pass: assign new recipes to remaining slots
+    # Second pass: assign new-recipe-led slots (remaining)
     assigned_slots = {(r.weekday, r.slot) for r in recommendations}
-
     for weekday, slot in slots:
         if (weekday, slot) in assigned_slots:
             continue
-
-        # Find best unused new recipe
-        slot_recipes: list[ScoredRecipe] = []
-        for new in new_recipes:
-            if len(slot_recipes) >= RECOMMENDATIONS_PER_SLOT:
-                break
-            if new.url and new.url not in used_new_urls:
-                slot_recipes.append(new)
-                if len(slot_recipes) == 1:  # Mark top choice as used
-                    used_new_urls.add(new.url)
-
-        # Fill remaining slots with favorites if not enough new recipes
-        if len(slot_recipes) < RECOMMENDATIONS_PER_SLOT:
-            # If the slot has no top recipe yet, pick the first unused favorite
-            # so each slot gets a unique primary selection.
-            if not slot_recipes:
-                for fav in favorites:
-                    if fav.recipe_id and fav.recipe_id not in used_favorite_ids:
-                        slot_recipes.append(fav)
-                        used_favorite_ids.add(fav.recipe_id)
-                        break
-                # All favorites exhausted — reuse best available as last resort
-                if not slot_recipes and favorites:
-                    slot_recipes.append(favorites[0])
-            # Fill alternatives from full favorites list (order doesn't matter here)
-            for fav in favorites:
-                if len(slot_recipes) >= RECOMMENDATIONS_PER_SLOT:
-                    break
-                if fav not in slot_recipes:
-                    slot_recipes.append(fav)
-
+        top = _pick_next(new_recipes)
+        # Fall back to favorites if no new recipe available
+        if top is None:
+            top = _pick_next(favorites)
+        # Merge pool: new recipes first, then favorites as alternatives
+        combined_pool = new_recipes + favorites
+        slot_recipes = _fill_slot(combined_pool, top)
+        # Edge case: no unique recipe left at all — reuse highest-scored favorite
+        if not slot_recipes and favorites:
+            slot_recipes = [favorites[0]]
         recommendations.append(SlotRecommendation(
             weekday=weekday,
             slot=slot,
