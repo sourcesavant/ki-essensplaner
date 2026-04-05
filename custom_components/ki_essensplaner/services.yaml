@@ -136,6 +136,55 @@ set_displayed_week:
       selector:
         text:
 
+set_rotation_policy:
+  name: Set Rotation Policy
+  description: Configure how often recipes can repeat. Changes apply from the next generated plan.
+  fields:
+    no_repeat_weeks:
+      name: No-Repeat Window (Weeks)
+      description: A recipe that was cooked will not be suggested again for this many weeks (0 = no restriction).
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 12
+          step: 1
+          mode: slider
+    favorite_min_return_weeks:
+      name: Favorite Min. Return (Weeks)
+      description: Favorite recipes must wait at least this many weeks before being suggested again (0 = no restriction).
+      required: true
+      example: 3
+      selector:
+        number:
+          min: 0
+          max: 24
+          step: 1
+          mode: slider
+    favorite_return_bonus_per_week:
+      name: Comeback Bonus per Week
+      description: Score bonus added per week a favorite has been absent beyond the minimum return window.
+      required: false
+      example: 2.0
+      selector:
+        number:
+          min: 0
+          max: 20
+          step: 0.5
+          mode: slider
+    favorite_return_bonus_max:
+      name: Max. Comeback Bonus
+      description: Maximum total comeback bonus that can be accumulated.
+      required: false
+      example: 10.0
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: slider
+
 set_household_size:
   name: Set Household Size
   description: Set the number of people in the household. Recipe quantities in shopping lists are automatically scaled based on this setting.

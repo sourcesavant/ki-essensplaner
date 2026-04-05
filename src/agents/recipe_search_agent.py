@@ -646,6 +646,18 @@ def _assign_recipes_to_slots(
 
         # Fill remaining slots with favorites if not enough new recipes
         if len(slot_recipes) < RECOMMENDATIONS_PER_SLOT:
+            # If the slot has no top recipe yet, pick the first unused favorite
+            # so each slot gets a unique primary selection.
+            if not slot_recipes:
+                for fav in favorites:
+                    if fav.recipe_id and fav.recipe_id not in used_favorite_ids:
+                        slot_recipes.append(fav)
+                        used_favorite_ids.add(fav.recipe_id)
+                        break
+                # All favorites exhausted — reuse best available as last resort
+                if not slot_recipes and favorites:
+                    slot_recipes.append(favorites[0])
+            # Fill alternatives from full favorites list (order doesn't matter here)
             for fav in favorites:
                 if len(slot_recipes) >= RECOMMENDATIONS_PER_SLOT:
                     break
@@ -914,11 +926,14 @@ def _select_unique_recipes(
             break
 
         if not found_allowed:
-            # Keep a safe fallback: any non-banned recommendation.
+            # All recommendations already used elsewhere — pick the least-bad option:
+            # prefer a recipe already used (duplicate) over one that is banned.
+            # This avoids blank slots while still respecting the banned list first.
             for idx, recipe in enumerate(slot_rec.recommendations):
                 alias_keys = _recipe_alias_keys(recipe)
                 if not alias_keys or alias_keys & banned_keys:
                     continue
+                # Accept duplicate only if not already selected for this exact slot
                 chosen_index = idx
                 found_allowed = True
                 break

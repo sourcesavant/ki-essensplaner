@@ -708,6 +708,25 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Error fetching config: %s", err)
             return None
 
+    async def set_rotation_policy(self, policy: dict) -> None:
+        """Set recipe rotation policy via API."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    f"{self.api_url}/api/config",
+                    headers=self._get_headers(),
+                    json={"rotation_policy": policy},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set rotation policy: %s", error_text)
+                        raise UpdateFailed(f"Failed to set rotation policy: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting rotation policy: %s", err)
+            raise UpdateFailed(f"Error setting rotation policy: {err}") from err
+
     async def set_household_size(self, size: int) -> None:
         """Set household size via API.
 

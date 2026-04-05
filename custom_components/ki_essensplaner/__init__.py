@@ -60,6 +60,13 @@ SET_HOUSEHOLD_SIZE_SCHEMA = vol.Schema({
     vol.Required("size"): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
 })
 
+SET_ROTATION_POLICY_SCHEMA = vol.Schema({
+    vol.Required("no_repeat_weeks"): vol.All(vol.Coerce(int), vol.Range(min=0, max=12)),
+    vol.Required("favorite_min_return_weeks"): vol.All(vol.Coerce(int), vol.Range(min=0, max=24)),
+    vol.Optional("favorite_return_bonus_per_week", default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0, max=20)),
+    vol.Optional("favorite_return_bonus_max", default=10.0): vol.All(vol.Coerce(float), vol.Range(min=0, max=100)),
+})
+
 SET_MULTI_DAY_SCHEMA = vol.Schema({
     vol.Required("primary_weekday"): cv.string,
     vol.Required("primary_slot"): cv.string,
@@ -262,6 +269,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.delete_weekly_plan()
 
+    async def handle_set_rotation_policy(call: ServiceCall) -> None:
+        """Handle set_rotation_policy service call."""
+        policy = {
+            "no_repeat_weeks": call.data["no_repeat_weeks"],
+            "favorite_min_return_weeks": call.data["favorite_min_return_weeks"],
+            "favorite_return_bonus_per_week": call.data.get("favorite_return_bonus_per_week", 2.0),
+            "favorite_return_bonus_max": call.data.get("favorite_return_bonus_max", 10.0),
+        }
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.set_rotation_policy(policy)
+
     async def handle_set_household_size(call: ServiceCall) -> None:
         """Handle set_household_size service call."""
         size = call.data["size"]
@@ -442,6 +460,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, "delete_weekly_plan", handle_delete_weekly_plan
     )
     hass.services.async_register(
+        DOMAIN, "set_rotation_policy", handle_set_rotation_policy, schema=SET_ROTATION_POLICY_SCHEMA
+    )
+    hass.services.async_register(
         DOMAIN, "set_household_size", handle_set_household_size, schema=SET_HOUSEHOLD_SIZE_SCHEMA
     )
     hass.services.async_register(
@@ -514,6 +535,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "select_recipe")
             hass.services.async_remove(DOMAIN, "set_recipe_url")
             hass.services.async_remove(DOMAIN, "delete_weekly_plan")
+            hass.services.async_remove(DOMAIN, "set_rotation_policy")
             hass.services.async_remove(DOMAIN, "set_household_size")
             hass.services.async_remove(DOMAIN, "set_multi_day")
             hass.services.async_remove(DOMAIN, "clear_multi_day")
