@@ -114,7 +114,7 @@ function render() {
 
   container.innerHTML = list.map(r => {
     const title = r.url
-      ? `<a href="${r.url}" target="_blank">${esc(r.title || '?')}</a>`
+      ? `<a href="#" data-url="${esc(r.url)}" class="recipe-link">${esc(r.title || '?')}</a>`
       : esc(r.title || '?');
     const meta = [];
     if (r.rating) meta.push(`<span class="stars">${stars(r.rating)}</span>`);
@@ -132,6 +132,15 @@ function render() {
 function esc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Open recipe links via window.open to work inside HA iframe sandbox
+document.getElementById('list').addEventListener('click', function(e) {
+  const a = e.target.closest('a.recipe-link');
+  if (!a) return;
+  e.preventDefault();
+  const url = a.dataset.url;
+  if (url) window.open(url, '_blank');
+});
 
 load();
 </script>
