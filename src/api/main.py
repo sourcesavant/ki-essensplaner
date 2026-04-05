@@ -23,6 +23,7 @@ from src.api.routers.profile import router as profile_router
 from src.api.routers.recipes import router as recipes_router
 from src.api.routers.seasonality import router as seasonality_router
 from src.api.routers.shopping import router as shopping_router
+from src.api.routers.ui import router as ui_router
 from src.api.routers.weekly_plan import router as weekly_plan_router
 
 # Create FastAPI app
@@ -65,4 +66,5 @@ app.include_router(seasonality_router)
 app.include_router(weekly_plan_router)
 app.include_router(shopping_router)
 app.include_router(recipes_router)
+app.include_router(ui_router)
 app.include_router(onboarding_router)

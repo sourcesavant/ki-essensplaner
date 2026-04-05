@@ -901,34 +901,8 @@ class RecipeBookSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return recipe book entries (top 50 to stay within HA's 16 KB limit)."""
+        """Return recipe book summary (count only — full list via /ui/recipe-book)."""
         book = self.coordinator.data.get("recipe_book") if self.coordinator.data else None
         if book is None:
-            return {"recipes": [], "total_count": 0}
-        recipes = book.get("recipes", [])
-        # Sort: rated first, then by cook count, limit to 50 entries
-        sorted_recipes = sorted(
-            recipes,
-            key=lambda r: (
-                r.get("rating") is None,       # rated first (False < True)
-                -(r.get("cook_count") or 0),   # higher cook count first
-                r.get("last_cooked") or "",
-            ),
-        )
-        top = sorted_recipes[:50]
-        return {
-            "total_count": len(recipes),
-            "recipes": [
-                {
-                    "id": r.get("id"),
-                    "title": r.get("title"),
-                    "url": r.get("source_url"),
-                    "rating": r.get("rating"),
-                    "cook_count": r.get("cook_count", 0),
-                    "last_cooked": r.get("last_cooked"),
-                    "prep_time_minutes": r.get("prep_time_minutes"),
-                    "calories": r.get("calories"),
-                }
-                for r in top
-            ],
-        }
+            return {"total_count": 0}
+        return {"total_count": len(book.get("recipes", []))}
