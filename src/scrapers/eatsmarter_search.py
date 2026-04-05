@@ -292,7 +292,10 @@ def _run_playwright_search(page, query: str, max_results: int) -> list[SearchRes
     page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
     _accept_cookies_if_present(page)
     time.sleep(3)
-    page.wait_for_load_state("networkidle", timeout=15000)
+    try:
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        pass  # networkidle may never fire on SPAs; extraction can still succeed
     return _extract_search_results_from_page(page, max_results)
 
 
@@ -341,7 +344,13 @@ def search_recipes_batch(
             query = " ".join(ingredients)
             print(f"Searching eatsmarter.de for: {', '.join(ingredients)}")
 
-            results = _run_playwright_search(page, query, item["max_results"])
+            try:
+                results = _run_playwright_search(page, query, item["max_results"])
+            except Exception as e:
+                print(f"  Search failed, skipping: {e}")
+                all_results.append([])
+                continue
+
             print(f"  Extracted {len(results)} unique recipes")
 
             if item["meal_type"]:

@@ -315,25 +315,30 @@ def _build_meal_plan(plan: WeeklyRecommendation) -> tuple[MealPlanCreate, int, i
     return meal_plan, len(meals), skipped
 
 
-def _generate_plan_sync(exclude_recipes: list[str] | None = None) -> None:
+def _generate_plan_sync(
+    exclude_recipes: list[str] | None = None,
+    archive_existing: bool = False,
+) -> None:
     """Synchronous wrapper for plan generation (runs in background).
 
     Args:
         exclude_recipes: Optional list of recipe URLs to exclude from the new plan
+        archive_existing: If True, archive the current plan before overwriting (used
+            when completing a week). If False (default), just overwrite without archiving.
     """
     try:
         print("[API] Starting weekly plan generation...")
         print(f"[API] Excluding {len(exclude_recipes or [])} recipes from previous week")
 
-        # Auto-archive existing plan before overwriting it
-        from src.agents.models import WEEKLY_PLAN_FILE
-        existing = load_weekly_plan()
-        if existing and existing.week_start and WEEKLY_PLAN_FILE.exists():
-            archive_name = f"weekly_plan_{existing.week_start}_completed.json"
-            archive_path = WEEKLY_PLAN_FILE.parent / archive_name
-            if not archive_path.exists():
-                save_weekly_plan(existing, archive_path)
-                print(f"[API] Auto-archived existing plan to {archive_name}")
+        if archive_existing:
+            from src.agents.models import WEEKLY_PLAN_FILE
+            existing = load_weekly_plan()
+            if existing and existing.week_start and WEEKLY_PLAN_FILE.exists():
+                archive_name = f"weekly_plan_{existing.week_start}_completed.json"
+                archive_path = WEEKLY_PLAN_FILE.parent / archive_name
+                if not archive_path.exists():
+                    save_weekly_plan(existing, archive_path)
+                    print(f"[API] Auto-archived existing plan to {archive_name}")
 
         preferences = get_multi_day_preferences()
         skipped = get_skipped_slots()
