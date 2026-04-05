@@ -182,6 +182,10 @@ def _create_browser_resources(headless: bool):
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
             "--mute-audio",
+            # Stability in constrained/container environments
+            "--disable-setuid-sandbox",
+            "--no-zygote",
+            "--no-first-run",
         ],
     }
     if chromium_path:
@@ -347,8 +351,20 @@ def search_recipes_batch(
             try:
                 results = _run_playwright_search(page, query, item["max_results"])
             except Exception as e:
-                print(f"  Search failed, skipping: {e}")
+                error_str = str(e)
+                print(f"  Search failed, skipping: {error_str[:120]}")
                 all_results.append([])
+                # Page crashed or closed — open a fresh page so remaining searches work
+                if any(kw in error_str for kw in ("crashed", "closed", "Target")):
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
+                    try:
+                        page = context.new_page()
+                        print("  Recreated page after crash")
+                    except Exception as page_err:
+                        print(f"  Could not recreate page: {page_err}")
                 continue
 
             print(f"  Extracted {len(results)} unique recipes")
