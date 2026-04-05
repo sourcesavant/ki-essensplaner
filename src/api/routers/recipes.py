@@ -217,8 +217,50 @@ def get_all_ratings_endpoint(
 def get_recipe_book_endpoint(
     _token: str = Depends(verify_token),
 ) -> dict:
-    """Rezeptbuch: alle gekochten/bewerteten Rezepte mit Statistiken."""
-    return {"recipes": get_recipe_book()}
+    """Rezeptbuch: alle gekochten/bewerteten Rezepte mit Statistiken.
+
+    Also includes recipes from the current weekly plan so users can rate
+    new recommendations before completing a week.
+    """
+    from src.agents.models import load_weekly_plan
+
+    book = get_recipe_book()
+    book_ids: set[int] = {r["id"] for r in book if r.get("id") is not None}
+    book_urls: set[str] = {r["source_url"] for r in book if r.get("source_url")}
+
+    plan = load_weekly_plan()
+    if plan:
+        for slot in plan.slots:
+            if slot.is_reuse_slot:
+                continue
+            recipe = slot.selected_recipe
+            if recipe is None:
+                continue
+            rid = recipe.recipe_id
+            url = recipe.url
+            if rid is not None and rid in book_ids:
+                continue
+            if url and url in book_urls:
+                continue
+            book.append(
+                {
+                    "id": rid,
+                    "title": recipe.title,
+                    "source_url": url,
+                    "prep_time_minutes": recipe.prep_time_minutes,
+                    "calories": recipe.calories,
+                    "rating": None,
+                    "rated_at": None,
+                    "cook_count": 0,
+                    "last_cooked": None,
+                }
+            )
+            if rid is not None:
+                book_ids.add(rid)
+            if url:
+                book_urls.add(url)
+
+    return {"recipes": book}
 
 
 @router.post("/recipes/fetch")

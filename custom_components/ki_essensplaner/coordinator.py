@@ -405,6 +405,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         _LOGGER.error("Failed to rate recipe: %s", error_text)
                         raise UpdateFailed(f"Failed to rate recipe: {error_text}")
             self._cache.pop("recipe_ratings", None)
+            self._cache.pop("recipe_book", None)
             await self.async_request_refresh()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error rating recipe: %s", err)
@@ -534,6 +535,7 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Mark the current weekly plan as completed via API."""
         try:
             self._displayed_week_start = None
+            self._cache.pop("recipe_book", None)
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.api_url}/api/weekly-plan/complete",
