@@ -225,11 +225,14 @@ def get_recipe_book_endpoint(
     from src.agents.models import load_weekly_plan
 
     book = get_recipe_book()
+    print(f"[RecipeBook] DB entries: {len(book)}")
     book_ids: set[int] = {r["id"] for r in book if r.get("id") is not None}
     book_urls: set[str] = {r["source_url"] for r in book if r.get("source_url")}
 
     plan = load_weekly_plan()
+    plan_added = 0
     if plan:
+        print(f"[RecipeBook] Plan found with {len(plan.slots)} slots")
         for slot in plan.slots:
             if slot.is_reuse_slot:
                 continue
@@ -255,11 +258,15 @@ def get_recipe_book_endpoint(
                     "last_cooked": None,
                 }
             )
+            plan_added += 1
             if rid is not None:
                 book_ids.add(rid)
             if url:
                 book_urls.add(url)
+    else:
+        print("[RecipeBook] No weekly plan found")
 
+    print(f"[RecipeBook] Total: {len(book)} ({plan_added} from current plan)")
     return {"recipes": book}
 
 
