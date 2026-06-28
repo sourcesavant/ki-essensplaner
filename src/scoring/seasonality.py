@@ -103,6 +103,19 @@ SEASONAL_CALENDAR: dict[str, list[int]] = {
     "minze": [5, 6, 7, 8, 9, 10],  # Mai-Oktober
 }
 
+SEASONAL_ALIASES = {
+    "baerlauch": "b\u00e4rlauch",
+    "barlauch": "b\u00e4rlauch",
+    "kuerbis": "k\u00fcrbis",
+    "gruenkohl": "gr\u00fcnkohl",
+}
+
+
+def _normalize_ingredient_key(ingredient: str) -> str:
+    """Normalize spelling variants used for seasonal lookup."""
+    normalized = ingredient.lower().strip()
+    return SEASONAL_ALIASES.get(normalized, normalized)
+
 
 def _load_external_data() -> dict[str, list[int]] | None:
     """Load seasonal data from external JSON file if it exists."""
@@ -144,7 +157,7 @@ def is_in_season(ingredient: str, month: int | None = None) -> bool | None:
     if not 1 <= month <= 12:
         raise ValueError(f"Month must be 1-12, got {month}")
 
-    ingredient = ingredient.lower().strip()
+    ingredient = _normalize_ingredient_key(ingredient)
     calendar = _get_calendar()
 
     if ingredient not in calendar:

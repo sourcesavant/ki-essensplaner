@@ -19,6 +19,7 @@ Example usage:
 """
 
 import json
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -48,6 +49,17 @@ MIN_OBTAINABLE_RATIO = 0.5  # 50% of ingredients must be obtainable
 
 # Profile file path
 PROFILE_FILE = LOCAL_DIR / "preference_profile.json"
+
+STRICT_SEASONAL_TITLE_INGREDIENTS = {
+    "spargel": ["spargel"],
+    "b\u00e4rlauch": ["b\u00e4rlauch", "baerlauch"],
+    "erdbeere": ["erdbeere", "erdbeer"],
+    "rhabarber": ["rhabarber"],
+    "k\u00fcrbis": ["k\u00fcrbis", "kuerbis", "hokkaido", "butternut"],
+    "pfifferling": ["pfifferling", "pfifferlinge"],
+    "gr\u00fcnkohl": ["gr\u00fcnkohl", "gruenkohl"],
+    "rosenkohl": ["rosenkohl"],
+}
 
 
 @dataclass
@@ -167,6 +179,49 @@ def _get_recipe_base_ingredients(recipe: Recipe, profile: dict) -> list[str]:
                 base_ingredients.append(words[-1])
 
     return base_ingredients
+
+
+def _normalize_text_for_matching(text: str) -> str:
+    """Normalize text for robust title and ingredient matching."""
+    normalized = text.lower()
+    normalized = (
+        normalized.replace("\u00e4", "ae")
+        .replace("\u00f6", "oe")
+        .replace("\u00fc", "ue")
+        .replace("\u00df", "ss")
+    )
+    normalized = unicodedata.normalize("NFKD", normalized)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _contains_alias(text: str, aliases: list[str]) -> bool:
+    normalized_text = _normalize_text_for_matching(text)
+    return any(_normalize_text_for_matching(alias) in normalized_text for alias in aliases)
+
+
+def _has_available_match(ingredient: str, available_ingredients: set[str]) -> bool:
+    ing_lower = ingredient.lower()
+    available_lower = {i.lower() for i in available_ingredients}
+    if ing_lower in available_lower:
+        return True
+    return any(ing_lower in avail or avail in ing_lower for avail in available_lower)
+
+
+def get_unavailable_strict_seasonal_title_ingredients(
+    recipe_title: str,
+    available_ingredients: set[str],
+    month: int,
+) -> list[str]:
+    """Find unavailable seasonal main ingredients from the recipe title."""
+    unavailable = []
+    for canonical, aliases in STRICT_SEASONAL_TITLE_INGREDIENTS.items():
+        if not _contains_alias(recipe_title, aliases):
+            continue
+        available = any(_has_available_match(alias, available_ingredients) for alias in aliases)
+        in_season = any(is_in_season(alias, month) is True for alias in [canonical, *aliases])
+        if not available and not in_season:
+            unavailable.append(canonical)
+    return unavailable
 
 
 def _calculate_ingredient_affinity(
@@ -365,13 +420,8 @@ def is_ingredient_obtainable(
         True if the ingredient can be obtained
     """
     ing_lower = ingredient.lower()
-    available_lower = {i.lower() for i in available_ingredients}
-
     # Check Bioland availability
-    if ing_lower in available_lower:
-        return True
-    # Fuzzy match for Bioland
-    if any(ing_lower in avail or avail in ing_lower for avail in available_lower):
+    if _has_available_match(ing_lower, available_ingredients):
         return True
 
     # Check seasonality
@@ -422,7 +472,7 @@ def _is_key_ingredient(ingredient: str, recipe_title: str) -> bool:
     title_lower = recipe_title.lower()
 
     # Direct match
-    if ing_lower in title_lower:
+    if _contains_alias(title_lower, [ing_lower]):
         return True
 
     # Common German variations
@@ -474,6 +524,18 @@ def is_recipe_viable(
 
     # Extract base ingredients
     recipe_ingredients = _get_recipe_base_ingredients(recipe, context.profile)
+
+    unavailable_title_ingredients = get_unavailable_strict_seasonal_title_ingredients(
+        recipe.title,
+        context.available_ingredients,
+        context.month,
+    )
+    if unavailable_title_ingredients:
+        reasons = [
+            f"{ing} nicht saisonal und nicht bei Bioland verf\u00fcgbar"
+            for ing in unavailable_title_ingredients
+        ]
+        return (False, reasons, 0.0)
 
     # Check excluded ingredients
     if context.excluded_ingredients and recipe_ingredients:

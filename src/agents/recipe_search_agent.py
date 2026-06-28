@@ -50,6 +50,7 @@ from src.scrapers.bioland_huesgen import ensure_bioland_current
 from src.scoring.recipe_scorer import (
     ScoringContext,
     calculate_score,
+    get_unavailable_strict_seasonal_title_ingredients,
     is_recipe_viable,
 )
 from src.scoring.seasonality import get_seasonal_ingredients
@@ -395,6 +396,17 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
 
         except Exception as e:
             print(f"      Failed to load: {e}")
+            unavailable_title_ingredients = get_unavailable_strict_seasonal_title_ingredients(
+                recipe.title,
+                context.available_ingredients,
+                context.month,
+            )
+            if unavailable_title_ingredients:
+                print(
+                    "      Filtered title-only seasonal ingredient: "
+                    f"{unavailable_title_ingredients}"
+                )
+                continue
             # Persist URL as minimal recipe so it can be rated/blacklisted immediately.
             if db_recipe is None:
                 try:
@@ -846,14 +858,13 @@ def _filter_and_boost_favorites_by_rotation(
 
 
 def _get_last_plan_recipe_keys(plan: WeeklyRecommendation | None) -> set[tuple[str, str | int]]:
-    """Alle 5 Vorschläge jedes Slots sperren (nicht nur ausgewählte)."""
+    """Block only recipes that were actually selected in the last plan."""
     if not plan:
         return set()
 
     keys: set[tuple[str, str | int]] = set()
-    for slot in plan.slots:
-        for recipe in slot.recommendations:  # alle 5
-            keys.update(_recipe_alias_keys(recipe))
+    for _, _, recipe in plan.get_selected_recipes():
+        keys.update(_recipe_alias_keys(recipe))
     return keys
 
 
