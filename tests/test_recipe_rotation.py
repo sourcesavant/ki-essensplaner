@@ -1,5 +1,7 @@
 from src.agents.models import ScoredRecipe, SlotRecommendation, WeeklyRecommendation
 from src.agents.recipe_search_agent import (
+    RECOMMENDATIONS_PER_SLOT,
+    _assign_recipes_to_slots,
     _filter_and_boost_favorites_by_rotation,
     _filter_new_recipes_by_rotation,
     _filter_slot_recommendations_by_banned_keys,
@@ -196,3 +198,31 @@ def test_top_up_slot_recommendations_keeps_alternatives_unique_across_slots() ->
     slot_2_titles = [recipe.title for recipe in slot_2.recommendations]
     assert slot_2_titles == ["Slot 2", "Refill"]
     assert "Duplicate" not in slot_2_titles
+
+
+def test_assign_recipes_to_slots_does_not_duplicate_when_pool_is_too_small() -> None:
+    favorite = _recipe("Only Favorite", "https://example.com/favorite", 90)
+    slots = [
+        ("Montag", "Mittagessen"),
+        ("Dienstag", "Mittagessen"),
+    ]
+
+    recommendations = _assign_recipes_to_slots(
+        slots=slots,
+        favorites=[favorite],
+        new_recipes=[],
+        context=None,
+    )
+
+    seen: set[tuple[str, str | int]] = set()
+    for slot in recommendations:
+        for recipe in slot.recommendations:
+            keys = {_recipe_key(recipe)}
+            assert not (keys & seen)
+            seen.update(key for key in keys if key is not None)
+
+    assert sum(len(slot.recommendations) for slot in recommendations) == 1
+
+
+def test_full_week_requires_seventy_unique_recommendation_slots() -> None:
+    assert 14 * RECOMMENDATIONS_PER_SLOT == 70

@@ -61,7 +61,7 @@ TARGET_FAVORITES_RATIO = 0.6
 # Number of recommendations per slot
 RECOMMENDATIONS_PER_SLOT = 5
 
-# Maximum new recipes to fetch details for (per search)
+# Minimum new recipes to fetch details for.
 MAX_DETAIL_FETCH = 20
 
 # Cuisine keywords for rotating query diversity (rotated by ISO week number)
@@ -308,7 +308,11 @@ def _search_new_recipes(
     return all_results
 
 
-def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -> list[ScoredRecipe]:
+def _load_recipe_details(
+    recipes: list[ScoredRecipe],
+    context: ScoringContext,
+    max_detail_fetch: int = MAX_DETAIL_FETCH,
+) -> list[ScoredRecipe]:
     """Load full ingredient details for top recipe candidates.
 
     Uses recipe-scrapers to fetch ingredients, then re-scores with full data.
@@ -316,6 +320,7 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
     Args:
         recipes: List of recipes to load details for
         context: Scoring context for re-scoring
+        max_detail_fetch: Maximum number of candidates to inspect
 
     Returns:
         List of recipes with updated scores (filtered for viability)
@@ -324,7 +329,7 @@ def _load_recipe_details(recipes: list[ScoredRecipe], context: ScoringContext) -
 
     detailed_recipes: list[ScoredRecipe] = []
 
-    for recipe in recipes[:MAX_DETAIL_FETCH]:
+    for recipe in recipes[:max_detail_fetch]:
         if not recipe.url:
             continue
 
@@ -672,9 +677,6 @@ def _assign_recipes_to_slots(
         # Merge pool: new recipes first, then favorites as alternatives
         combined_pool = new_recipes + favorites
         slot_recipes = _fill_slot(combined_pool, top)
-        # Edge case: no unique recipe left at all — reuse highest-scored favorite
-        if not slot_recipes and favorites:
-            slot_recipes = [favorites[0]]
         recommendations.append(SlotRecommendation(
             weekday=weekday,
             slot=slot,
@@ -1089,7 +1091,21 @@ def run_search_agent(
 
     # Load details for top candidates
     print("\n9. Loading details for top candidates...")
-    new_recipes = _load_recipe_details(new_recipes_raw, context)
+    required_unique_recommendations = len(all_slots) * RECOMMENDATIONS_PER_SLOT
+    detail_fetch_target = max(
+        MAX_DETAIL_FETCH,
+        required_unique_recommendations - len(favorites) + RECOMMENDATIONS_PER_SLOT,
+    )
+    detail_fetch_target = min(detail_fetch_target, len(new_recipes_raw))
+    print(
+        "   Detail fetch target:"
+        f" {detail_fetch_target} for {required_unique_recommendations} desired unique suggestions"
+    )
+    new_recipes = _load_recipe_details(
+        new_recipes_raw,
+        context,
+        max_detail_fetch=detail_fetch_target,
+    )
     new_recipes = _filter_new_recipes_by_rotation(
         new_recipes,
         recency_map,
