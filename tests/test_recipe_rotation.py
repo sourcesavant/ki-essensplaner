@@ -6,6 +6,7 @@ from src.agents.recipe_search_agent import (
     _get_last_plan_recipe_keys,
     _recipe_key,
     _select_unique_recipes,
+    _top_up_slot_recommendations,
 )
 
 
@@ -164,3 +165,34 @@ def test_filter_slot_recommendations_removes_banned_alternatives() -> None:
     )
 
     assert [r.title for r in slot.recommendations] == ["Allowed"]
+
+
+def test_top_up_slot_recommendations_keeps_alternatives_unique_across_slots() -> None:
+    duplicate = _recipe("Duplicate", "https://example.com/duplicate", 90)
+    slot_1_only = _recipe("Slot 1", "https://example.com/slot-1", 80)
+    slot_2_only = _recipe("Slot 2", "https://example.com/slot-2", 79)
+    refill = _recipe("Refill", "https://example.com/refill", 78)
+    other_refill = _recipe("Other Refill", "https://example.com/other-refill", 77)
+
+    slot_1 = SlotRecommendation(
+        weekday="Montag",
+        slot="Mittagessen",
+        recommendations=[duplicate, slot_1_only],
+        selected_index=0,
+    )
+    slot_2 = SlotRecommendation(
+        weekday="Dienstag",
+        slot="Mittagessen",
+        recommendations=[slot_2_only],
+        selected_index=0,
+    )
+
+    _top_up_slot_recommendations(
+        recommendations=[slot_1, slot_2],
+        fallback_candidates=[duplicate, refill, other_refill],
+        target_count=2,
+    )
+
+    slot_2_titles = [recipe.title for recipe in slot_2.recommendations]
+    assert slot_2_titles == ["Slot 2", "Refill"]
+    assert "Duplicate" not in slot_2_titles

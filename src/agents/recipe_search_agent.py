@@ -485,6 +485,16 @@ def _top_up_slot_recommendations(
 ) -> None:
     """Refill each slot recommendation list up to target_count where possible."""
     banned = banned_keys or set()
+    global_existing_keys: set[tuple[str, str | int]] = set()
+    existing_keys_by_slot: dict[tuple[str, str], set[tuple[str, str | int]]] = {}
+
+    for slot_rec in recommendations:
+        slot_key = (slot_rec.weekday, slot_rec.slot)
+        slot_existing: set[tuple[str, str | int]] = set()
+        for existing in slot_rec.recommendations:
+            slot_existing.update(_recipe_alias_keys(existing))
+        existing_keys_by_slot[slot_key] = slot_existing
+        global_existing_keys.update(slot_existing)
 
     selected_aliases_by_slot: dict[tuple[str, str], set[tuple[str, str | int]]] = {}
     selected_aliases: set[tuple[str, str | int]] = set()
@@ -504,9 +514,7 @@ def _top_up_slot_recommendations(
     for slot_rec in recommendations:
         slot_key = (slot_rec.weekday, slot_rec.slot)
         own_selected_aliases = selected_aliases_by_slot.get(slot_key, set())
-        existing_keys: set[tuple[str, str | int]] = set()
-        for existing in slot_rec.recommendations:
-            existing_keys.update(_recipe_alias_keys(existing))
+        existing_keys = existing_keys_by_slot.setdefault(slot_key, set())
 
         if len(slot_rec.recommendations) >= target_count:
             continue
@@ -521,10 +529,13 @@ def _top_up_slot_recommendations(
                 continue
             if alias_keys & existing_keys:
                 continue
+            if alias_keys & (global_existing_keys - existing_keys):
+                continue
             if (alias_keys & selected_aliases) and not (alias_keys & own_selected_aliases):
                 continue
             slot_rec.recommendations.append(candidate)
             existing_keys.update(alias_keys)
+            global_existing_keys.update(alias_keys)
 
         if not slot_rec.recommendations:
             slot_rec.selected_index = -1
