@@ -63,6 +63,9 @@ RECOMMENDATIONS_PER_SLOT = 5
 
 # Minimum new recipes to fetch details for.
 MAX_DETAIL_FETCH = 20
+DETAIL_FETCH_BATCH_SIZE = 20
+POOL_RESERVE_RATIO = 0.25
+POOL_RESERVE_MIN = 20
 
 # Cuisine keywords for rotating query diversity (rotated by ISO week number)
 CUISINE_KEYWORDS = [
@@ -71,8 +74,8 @@ CUISINE_KEYWORDS = [
 ]
 
 # Rotation defaults (can be overridden via user config rotation_policy)
-DEFAULT_NO_REPEAT_WEEKS = 1
-DEFAULT_FAVORITE_MIN_RETURN_WEEKS = 3
+DEFAULT_NO_REPEAT_WEEKS = 4
+DEFAULT_FAVORITE_MIN_RETURN_WEEKS = 4
 DEFAULT_FAVORITE_RETURN_BONUS_PER_WEEK = 2.0
 DEFAULT_FAVORITE_RETURN_BONUS_MAX = 10.0
 
@@ -436,6 +439,43 @@ def _load_recipe_details(
     return detailed_recipes
 
 
+def _load_new_recipes_until_target(
+    recipes: list[ScoredRecipe],
+    context: ScoringContext,
+    recency_map: dict[tuple[str, str | int], int],
+    no_repeat_weeks: int,
+    target_count: int,
+    batch_size: int = DETAIL_FETCH_BATCH_SIZE,
+) -> list[ScoredRecipe]:
+    """Load candidates in batches until enough survive all filters."""
+    viable: list[ScoredRecipe] = []
+    seen_keys: set[tuple[str, str | int]] = set()
+
+    for start in range(0, len(recipes), batch_size):
+        if len(viable) >= target_count:
+            break
+        batch = recipes[start:start + batch_size]
+        detailed = _load_recipe_details(batch, context, max_detail_fetch=len(batch))
+        detailed = _filter_new_recipes_by_rotation(
+            detailed,
+            recency_map,
+            no_repeat_weeks=no_repeat_weeks,
+        )
+        for recipe in detailed:
+            key = _recipe_key(recipe)
+            if key is None or key in seen_keys:
+                continue
+            seen_keys.add(key)
+            viable.append(recipe)
+        print(
+            f"   Candidate pool: {len(viable)}/{target_count} viable "
+            f"after inspecting {min(start + len(batch), len(recipes))}/{len(recipes)}"
+        )
+
+    viable.sort(key=lambda recipe: recipe.score, reverse=True)
+    return viable
+
+
 def _remove_selected_recipe_duplicates_from_alternatives(
     recommendations: list[SlotRecommendation],
 ) -> None:
@@ -571,14 +611,10 @@ def _score_favorites(
 
         score = calculate_score(recipe, context)
 
-        # Boost score slightly based on how often it was cooked (max +10 points)
-        cook_bonus = min(10, cook_count * 2)
-        adjusted_score = min(100, score.total_score + cook_bonus)
-
         scored = ScoredRecipe(
             title=recipe.title,
             url=recipe.source_url,
-            score=adjusted_score,
+            score=score.total_score,
             reasoning=f"{score.reasoning} Bereits {cook_count}x gekocht.",
             is_new=False,
             recipe_id=recipe.id,
@@ -593,6 +629,28 @@ def _score_favorites(
     scored_favorites.sort(key=lambda x: x.score, reverse=True)
 
     return scored_favorites
+
+
+_DIVERSITY_STOPWORDS = {
+    "auf", "aus", "der", "die", "das", "ein", "eine", "für", "im", "in",
+    "mit", "nach", "und", "von", "vom", "zu",
+}
+
+
+def _diversity_tokens(value: str) -> set[str]:
+    """Return meaningful normalized words used for similarity scoring."""
+    normalized = "".join(char.lower() if char.isalnum() else " " for char in value)
+    return {
+        token for token in normalized.split()
+        if len(token) >= 4 and token not in _DIVERSITY_STOPWORDS
+    }
+
+
+def _ingredient_diversity_tokens(ingredients: list[str]) -> set[str]:
+    tokens: set[str] = set()
+    for ingredient in ingredients[:8]:
+        tokens.update(_diversity_tokens(ingredient))
+    return tokens
 
 
 def _assign_recipes_to_slots(
@@ -623,14 +681,32 @@ def _assign_recipes_to_slots(
     # Global pool tracking — each recipe assigned anywhere is removed from
     # future slots so it never appears in two different slot lists.
     globally_used: set[tuple[str, str | int]] = set()
+    selected_recipes: list[ScoredRecipe] = []
+
+    def _diversity_penalty(recipe: ScoredRecipe) -> float:
+        title_tokens = _diversity_tokens(recipe.title)
+        ingredient_tokens = _ingredient_diversity_tokens(recipe.ingredients)
+        penalty = 0.0
+        for selected in selected_recipes:
+            selected_title = _diversity_tokens(selected.title)
+            selected_ingredients = _ingredient_diversity_tokens(selected.ingredients)
+            if title_tokens and selected_title:
+                overlap = len(title_tokens & selected_title) / len(title_tokens | selected_title)
+                penalty += overlap * 18.0
+            if ingredient_tokens and selected_ingredients:
+                penalty += min(12.0, len(ingredient_tokens & selected_ingredients) * 3.0)
+        return penalty
 
     def _pick_next(pool: list[ScoredRecipe]) -> ScoredRecipe | None:
-        """Return the highest-scored recipe from pool not yet globally used."""
-        for recipe in pool:
-            keys = _recipe_alias_keys(recipe)
-            if keys and not (keys & globally_used):
-                return recipe
-        return None
+        """Return the best unused recipe after applying week-diversity penalties."""
+        candidates = [
+            recipe for recipe in pool
+            if _recipe_alias_keys(recipe)
+            and not (_recipe_alias_keys(recipe) & globally_used)
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda recipe: recipe.score - _diversity_penalty(recipe))
 
     def _fill_slot(pool: list[ScoredRecipe], top: ScoredRecipe | None) -> list[ScoredRecipe]:
         """Build a recommendation list of up to RECOMMENDATIONS_PER_SLOT unique recipes."""
@@ -658,6 +734,8 @@ def _assign_recipes_to_slots(
         if top is None:
             break
         slot_recipes = _fill_slot(favorites, top)
+        if top is not None:
+            selected_recipes.append(top)
         favorites_assigned += 1
         recommendations.append(SlotRecommendation(
             weekday=weekday,
@@ -677,6 +755,8 @@ def _assign_recipes_to_slots(
         # Merge pool: new recipes first, then favorites as alternatives
         combined_pool = new_recipes + favorites
         slot_recipes = _fill_slot(combined_pool, top)
+        if top is not None:
+            selected_recipes.append(top)
         recommendations.append(SlotRecommendation(
             weekday=weekday,
             slot=slot,
@@ -1089,29 +1169,41 @@ def run_search_agent(
     new_recipes_raw = _search_new_recipes(queries, context)
     print(f"   {len(new_recipes_raw)} candidates found")
 
-    # Load details for top candidates
+    # Load details adaptively until the post-filter pool includes a reserve.
     print("\n9. Loading details for top candidates...")
     required_unique_recommendations = len(all_slots) * RECOMMENDATIONS_PER_SLOT
-    detail_fetch_target = max(
-        MAX_DETAIL_FETCH,
-        required_unique_recommendations - len(favorites) + RECOMMENDATIONS_PER_SLOT,
+    reserve = max(
+        POOL_RESERVE_MIN,
+        int(required_unique_recommendations * POOL_RESERVE_RATIO),
     )
-    detail_fetch_target = min(detail_fetch_target, len(new_recipes_raw))
+    desired_pool_size = required_unique_recommendations + reserve
+    new_led_slots = len(all_slots) - int(len(all_slots) * TARGET_FAVORITES_RATIO)
+    minimum_new_pool = new_led_slots * RECOMMENDATIONS_PER_SLOT
+    new_recipe_target = max(
+        minimum_new_pool,
+        desired_pool_size - len(favorites),
+    )
     print(
-        "   Detail fetch target:"
-        f" {detail_fetch_target} for {required_unique_recommendations} desired unique suggestions"
+        "   Viable pool target:"
+        f" {desired_pool_size} ({required_unique_recommendations} suggestions + {reserve} reserve),"
+        f" requiring up to {new_recipe_target} new recipes"
     )
-    new_recipes = _load_recipe_details(
+    new_recipes = _load_new_recipes_until_target(
         new_recipes_raw,
         context,
-        max_detail_fetch=detail_fetch_target,
-    )
-    new_recipes = _filter_new_recipes_by_rotation(
-        new_recipes,
         recency_map,
         no_repeat_weeks=rotation["no_repeat_weeks"],
+        target_count=new_recipe_target,
     )
     print(f"   {len(new_recipes)} viable new recipes")
+    actual_pool_size = len(favorites) + len(new_recipes)
+    if actual_pool_size < required_unique_recommendations:
+        print(
+            f"   WARNING: Pool has only {actual_pool_size}/"
+            f"{required_unique_recommendations} required unique recipes"
+        )
+    elif actual_pool_size < desired_pool_size:
+        print(f"   Pool reserve is smaller than desired: {actual_pool_size}/{desired_pool_size}")
 
     # Assign recipes to slots
     print("\n10. Assigning recipes to slots...")

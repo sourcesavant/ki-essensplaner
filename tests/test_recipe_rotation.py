@@ -1,3 +1,4 @@
+import src.agents.recipe_search_agent as search_agent
 from src.agents.models import ScoredRecipe, SlotRecommendation, WeeklyRecommendation
 from src.agents.recipe_search_agent import (
     RECOMMENDATIONS_PER_SLOT,
@@ -6,6 +7,7 @@ from src.agents.recipe_search_agent import (
     _filter_new_recipes_by_rotation,
     _filter_slot_recommendations_by_banned_keys,
     _get_last_plan_recipe_keys,
+    _load_new_recipes_until_target,
     _recipe_key,
     _select_unique_recipes,
     _top_up_slot_recommendations,
@@ -226,3 +228,52 @@ def test_assign_recipes_to_slots_does_not_duplicate_when_pool_is_too_small() -> 
 
 def test_full_week_requires_seventy_unique_recommendation_slots() -> None:
     assert 14 * RECOMMENDATIONS_PER_SLOT == 70
+
+
+def test_detail_loading_continues_until_post_filter_target(monkeypatch) -> None:
+    recipes = [
+        _recipe(f"Recipe {index}", f"https://example.com/{index}", 100 - index)
+        for index in range(45)
+    ]
+    calls: list[int] = []
+
+    def fake_load(batch, context, max_detail_fetch):
+        calls.append(len(batch))
+        return batch
+
+    monkeypatch.setattr(search_agent, "_load_recipe_details", fake_load)
+
+    result = _load_new_recipes_until_target(
+        recipes,
+        context=None,
+        recency_map={},
+        no_repeat_weeks=4,
+        target_count=25,
+        batch_size=20,
+    )
+
+    assert len(result) == 40
+    assert calls == [20, 20]
+
+
+def test_assignment_prefers_different_title_for_next_slot() -> None:
+    recipes = [
+        _recipe("Pasta Tomate", "https://example.com/pasta-tomate", 100),
+        _recipe("Suppe Kürbis", "https://example.com/suppe", 99),
+        _recipe("Curry Kichererbse", "https://example.com/curry", 98),
+        _recipe("Auflauf Kartoffel", "https://example.com/auflauf", 97),
+        _recipe("Risotto Pilze", "https://example.com/risotto", 96),
+        _recipe("Pasta Spinat", "https://example.com/pasta-spinat", 95),
+        _recipe("Bowl Gemüse", "https://example.com/bowl", 94),
+    ]
+
+    recommendations = _assign_recipes_to_slots(
+        slots=[("Montag", "Mittagessen"), ("Dienstag", "Mittagessen")],
+        favorites=recipes,
+        new_recipes=[],
+        context=None,
+        target_favorites_ratio=1.0,
+    )
+
+    assert recommendations[0].top_recipe.title == "Pasta Tomate"
+    assert recommendations[1].top_recipe.title == "Bowl Gemüse"

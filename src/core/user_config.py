@@ -22,8 +22,8 @@ from src.core.config import LOCAL_DIR
 CONFIG_PATH = LOCAL_DIR / "config.json"
 DEFAULT_HOUSEHOLD_SIZE = 2
 DEFAULT_ROTATION_POLICY = {
-    "no_repeat_weeks": 1,
-    "favorite_min_return_weeks": 3,
+    "no_repeat_weeks": 4,
+    "favorite_min_return_weeks": 4,
     "favorite_return_bonus_per_week": 2.0,
     "favorite_return_bonus_max": 10.0,
 }
