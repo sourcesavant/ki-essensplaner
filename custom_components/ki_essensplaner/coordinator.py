@@ -675,6 +675,26 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Error setting recipe URL: %s", err)
             raise UpdateFailed(f"Error setting recipe URL: {err}") from err
 
+    async def set_slot_note(self, weekday: str, slot: str, note: str) -> None:
+        """Set or clear a note for a slot in the current weekly plan."""
+        try:
+            self._displayed_week_start = None
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    f"{self.api_url}/api/weekly-plan/note",
+                    headers=self._get_headers(),
+                    json={"weekday": weekday, "slot": slot, "note": note},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error("Failed to set slot note: %s", error_text)
+                        raise UpdateFailed(f"Failed to set slot note: {error_text}")
+            await self.async_request_refresh()
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error setting slot note: %s", err)
+            raise UpdateFailed(f"Error setting slot note: {err}") from err
+
     async def delete_weekly_plan(self) -> None:
         """Delete the current weekly plan via API."""
         try:

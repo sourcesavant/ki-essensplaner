@@ -403,6 +403,41 @@ clear_skip_slots:
             - "Mittagessen"
             - "Abendessen"
 
+set_slot_note:
+  name: Slot-Anmerkung speichern
+  description: Speichert oder entfernt eine Anmerkung an einem Slot des aktuellen Wochenplans.
+  fields:
+    weekday:
+      name: Wochentag
+      required: true
+      example: "Montag"
+      selector:
+        select:
+          options:
+            - "Montag"
+            - "Dienstag"
+            - "Mittwoch"
+            - "Donnerstag"
+            - "Freitag"
+            - "Samstag"
+            - "Sonntag"
+    slot:
+      name: Mahlzeit
+      required: true
+      example: "Abendessen"
+      selector:
+        select:
+          options:
+            - "Mittagessen"
+            - "Abendessen"
+    note:
+      name: Anmerkung
+      description: Leer speichern, um die Anmerkung zu entfernen (maximal 500 Zeichen).
+      required: true
+      selector:
+        text:
+          multiline: true
+
 fetch_recipes:
   name: Fetch Recipes
   description: Fetch and scrape recipes for all meal URLs that are not yet linked to a recipe.

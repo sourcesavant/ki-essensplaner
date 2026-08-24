@@ -77,6 +77,7 @@ class SlotRecommendation:
     slot: str
     recommendations: list[ScoredRecipe] = field(default_factory=list)
     selected_index: int = 0  # Index of user-selected recipe (default: top recommendation)
+    note: str | None = None  # User note for this plan slot
     reuse_from: tuple[str, str] | None = None  # (weekday, slot) if reusing from another slot
     prep_days: int = 1  # Number of days this recipe is prepped for
 
@@ -349,6 +350,7 @@ class WeeklyRecommendation:
                     "weekday": s.weekday,
                     "slot": s.slot,
                     "selected_index": s.selected_index,
+                    "note": s.note,
                     "reuse_from": s.reuse_from,
                     "prep_days": s.prep_days,
                     "recommendations": [
@@ -411,6 +413,7 @@ class WeeklyRecommendation:
                     slot=s_data["slot"],
                     recommendations=recommendations,
                     selected_index=s_data.get("selected_index", 0),
+                    note=s_data.get("note"),
                     reuse_from=reuse_from,
                     prep_days=s_data.get("prep_days", 1),
                 )

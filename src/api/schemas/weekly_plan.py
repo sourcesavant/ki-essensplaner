@@ -24,6 +24,7 @@ class SlotResponse(BaseModel):
     slot: str
     recommendations: list[RecipeResponse] = Field(default_factory=list)
     selected_index: int = 0
+    note: str | None = None
     reuse_from: dict | None = None  # {"weekday": "...", "slot": "..."}
     prep_days: int = 1
     is_reuse_slot: bool = False
@@ -68,6 +69,14 @@ class SelectRecipeUrlRequest(BaseModel):
     weekday: str = Field(..., description="German weekday name (Montag, Dienstag, ...)")
     slot: str = Field(..., description="Meal slot (Mittagessen, Abendessen)")
     recipe_url: str = Field(..., description="Recipe URL to scrape and select")
+
+
+class UpdateSlotNoteRequest(BaseModel):
+    """Request to set or clear a note on a meal slot."""
+
+    weekday: str = Field(..., description="German weekday name (Montag, Dienstag, ...)")
+    slot: str = Field(..., description="Meal slot (Mittagessen, Abendessen)")
+    note: str = Field(default="", max_length=500)
 
 
 class GenerateWeeklyPlanResponse(BaseModel):

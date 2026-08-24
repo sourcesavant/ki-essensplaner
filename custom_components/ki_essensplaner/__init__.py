@@ -56,6 +56,12 @@ SET_RECIPE_URL_SCHEMA = vol.Schema({
     vol.Required("recipe_url"): cv.string,
 })
 
+SET_SLOT_NOTE_SCHEMA = vol.Schema({
+    vol.Required("weekday"): cv.string,
+    vol.Required("slot"): cv.string,
+    vol.Required("note"): vol.All(cv.string, vol.Length(max=500)),
+})
+
 SET_HOUSEHOLD_SIZE_SCHEMA = vol.Schema({
     vol.Required("size"): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
 })
@@ -269,6 +275,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = next(iter(hass.data[DOMAIN].values()))
         await coordinator.delete_weekly_plan()
 
+    async def handle_set_slot_note(call: ServiceCall) -> None:
+        """Handle a note update for one weekly-plan slot."""
+        weekday = call.data["weekday"]
+        slot = call.data["slot"]
+        coordinator = next(iter(hass.data[DOMAIN].values()))
+        await coordinator.set_slot_note(weekday, slot, call.data["note"])
+        hass.bus.async_fire(
+            f"{DOMAIN}_plan_updated",
+            {"message": f"Slot note changed for {weekday} {slot}", "weekday": weekday, "slot": slot},
+        )
+
     async def handle_set_rotation_policy(call: ServiceCall) -> None:
         """Handle set_rotation_policy service call."""
         policy = {
@@ -457,6 +474,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, "set_recipe_url", handle_set_recipe_url, schema=SET_RECIPE_URL_SCHEMA
     )
     hass.services.async_register(
+        DOMAIN, "set_slot_note", handle_set_slot_note, schema=SET_SLOT_NOTE_SCHEMA
+    )
+    hass.services.async_register(
         DOMAIN, "delete_weekly_plan", handle_delete_weekly_plan
     )
     hass.services.async_register(
@@ -534,6 +554,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "generate_weekly_plan")
             hass.services.async_remove(DOMAIN, "select_recipe")
             hass.services.async_remove(DOMAIN, "set_recipe_url")
+            hass.services.async_remove(DOMAIN, "set_slot_note")
             hass.services.async_remove(DOMAIN, "delete_weekly_plan")
             hass.services.async_remove(DOMAIN, "set_rotation_policy")
             hass.services.async_remove(DOMAIN, "set_household_size")

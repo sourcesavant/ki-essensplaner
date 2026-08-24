@@ -392,6 +392,7 @@ class WeeklyPlanSlotSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEnt
             ],
             "alternatives_count": max(len(recommendations) - 1, 0),
             "selected_index": selected_index,
+            "note": slot_data.get("note"),
             # Multi-day attributes
             "is_reuse_slot": slot_data.get("is_reuse_slot", False),
             "prep_days": slot_data.get("prep_days", 1),

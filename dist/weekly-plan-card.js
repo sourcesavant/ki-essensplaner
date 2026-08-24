@@ -19,6 +19,8 @@ class WeeklyPlanCard extends HTMLElement {
     this._scrollTimeout = null;
     this._savedScrollPosition = 0;
     this._isRestoringScroll = false;
+    this._noteDrafts = new Map();
+    this._notePlanGeneratedAt = null;
   }
 
   setConfig(config) {
@@ -97,7 +99,7 @@ class WeeklyPlanCard extends HTMLElement {
   }
 
   _callService(service, data = {}) {
-    this._hass.callService('ki_essensplaner', service, data);
+    return this._hass.callService('ki_essensplaner', service, data);
   }
 
   _rateRecipe(recipeId, recipeUrlEncoded, recipeTitleEncoded, rating) {
@@ -131,6 +133,41 @@ class WeeklyPlanCard extends HTMLElement {
       recipe_url: url
     });
     return true;
+  }
+
+  _escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  _noteKey(weekday, slot) {
+    return `${weekday}:${slot}`;
+  }
+
+  _updateNoteDraft(textarea, weekday, slot) {
+    this._noteDrafts.set(this._noteKey(weekday, slot), textarea.value);
+  }
+
+  async _saveSlotNote(button, weekday, slot) {
+    const container = button?.closest('.slot-note');
+    const textarea = container?.querySelector('.slot-note-input');
+    const feedback = container?.querySelector('.slot-note-feedback');
+    if (!textarea) return;
+    if (textarea.value.length > 500) {
+      this._setFeedback(feedback, 'Maximal 500 Zeichen erlaubt.', true);
+      return;
+    }
+    try {
+      await this._callService('set_slot_note', { weekday, slot, note: textarea.value });
+      this._setFeedback(feedback, 'Gespeichert.', false);
+      setTimeout(() => this._setFeedback(feedback, ''), 2500);
+    } catch (error) {
+      this._setFeedback(feedback, 'Speichern fehlgeschlagen.', true);
+    }
   }
 
   _isValidUrl(value) {
@@ -358,6 +395,15 @@ class WeeklyPlanCard extends HTMLElement {
     const isReuseSlot = attributes.is_reuse_slot || false;
     const alternatives = attributes.alternatives || [];
     const selectedIndex = Number.isInteger(attributes.selected_index) ? attributes.selected_index : 0;
+    const noteKey = this._noteKey(weekday, slot);
+    const persistedNote = attributes.note || '';
+    const draftNote = this._noteDrafts.get(noteKey);
+    if (!readOnly && draftNote !== undefined && draftNote.trim() === persistedNote) {
+      this._noteDrafts.delete(noteKey);
+    }
+    const note = !readOnly && this._noteDrafts.has(noteKey)
+      ? this._noteDrafts.get(noteKey)
+      : persistedNote;
 
     const effortColor = this._getEffortColor(prepTime);
     const newBadge = isNew ? '<span class="badge new">NEU</span>' : '';
@@ -393,6 +439,16 @@ class WeeklyPlanCard extends HTMLElement {
         <div class="custom-url-feedback" aria-live="polite"></div>
       </div>
     ` : '';
+    const noteHtml = `
+      <div class="slot-note">
+        <label class="slot-note-label">Anmerkung</label>
+        <textarea class="slot-note-input" maxlength="500" placeholder="Anmerkung zu diesem Slot"
+          oninput="this.getRootNode().host._updateNoteDraft(this, '${weekday}', '${slot}')"
+          ${readOnly ? 'disabled' : ''}>${this._escapeHtml(note)}</textarea>
+        ${readOnly ? '' : `<button class="slot-note-button" onclick="this.getRootNode().host._saveSlotNote(this, '${weekday}', '${slot}')">Speichern</button>`}
+        <div class="slot-note-feedback" aria-live="polite"></div>
+      </div>
+    `;
 
     return `
       <div class="slot" style="border-left: 4px solid ${effortColor}">
@@ -410,6 +466,7 @@ class WeeklyPlanCard extends HTMLElement {
           </div>
           ${starsHtml}
           ${alternativesHtml}
+          ${noteHtml}
         </div>
       </div>
     `;
@@ -433,6 +490,10 @@ class WeeklyPlanCard extends HTMLElement {
     const isCompleted = Boolean(completedAt);
     const completedLabel = completedAt ? this._formatDate(completedAt) : '';
     const generatedAt = planStatus?.attributes?.generated_at || null;
+    if (this._notePlanGeneratedAt && generatedAt && generatedAt !== this._notePlanGeneratedAt) {
+      this._noteDrafts.clear();
+    }
+    this._notePlanGeneratedAt = generatedAt;
     const displayMode = planStatus?.attributes?.display_mode || 'current';
     const isHistoryMode = displayMode === 'history';
     const displayedWeekStart = planStatus?.attributes?.displayed_week_start || null;
@@ -709,6 +770,47 @@ class WeeklyPlanCard extends HTMLElement {
         .custom-url-feedback.error {
           color: #c62828;
         }
+        .slot-note {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 6px;
+          margin-top: 10px;
+        }
+        .slot-note-label {
+          grid-column: 1 / -1;
+          color: var(--secondary-text-color);
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .slot-note-input {
+          min-height: 46px;
+          padding: 5px 6px;
+          resize: vertical;
+          border: 1px solid var(--divider-color);
+          border-radius: 4px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-family: inherit;
+          font-size: 12px;
+        }
+        .slot-note-button {
+          align-self: end;
+          padding: 5px 8px;
+          border: none;
+          border-radius: 4px;
+          background: var(--primary-color);
+          color: white;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .slot-note-feedback {
+          display: none;
+          grid-column: 1 / -1;
+          font-size: 11px;
+          color: var(--secondary-text-color);
+        }
+        .slot-note-feedback.success { color: #2e7d32; }
+        .slot-note-feedback.error { color: #c62828; }
         .star-rating {
           display: flex;
           gap: 2px;

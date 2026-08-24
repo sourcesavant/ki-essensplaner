@@ -31,6 +31,7 @@ from src.api.schemas.weekly_plan import (
     SkipSlotsRequest,
     SkipSlotsResponse,
     SlotResponse,
+    UpdateSlotNoteRequest,
     WeeklyPlanHistoryItem,
     WeeklyPlanHistoryResponse,
     WeeklyPlanResponse,
@@ -158,6 +159,7 @@ def _convert_to_response(plan: WeeklyRecommendation) -> WeeklyPlanResponse:
                 slot=slot.slot,
                 recommendations=recommendations,
                 selected_index=slot.selected_index,
+                note=slot.note,
                 reuse_from=(
                     {"weekday": slot.reuse_from[0], "slot": slot.reuse_from[1]}
                     if slot.reuse_from
@@ -596,6 +598,39 @@ def select_recipe(
         )
 
     # Save updated plan
+    save_weekly_plan(plan)
+    return _convert_to_response(plan)
+
+
+@router.put("/note", response_model=WeeklyPlanResponse)
+def update_slot_note(
+    request: UpdateSlotNoteRequest,
+    _token: str = Depends(verify_token),
+) -> WeeklyPlanResponse:
+    """Set or clear the note attached to a slot in the current plan."""
+    plan = load_weekly_plan()
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No weekly plan found")
+
+    if request.weekday not in WEEKDAYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid weekday. Must be one of: {', '.join(WEEKDAYS)}",
+        )
+    if request.slot not in MEAL_SLOTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid slot. Must be one of: {', '.join(MEAL_SLOTS)}",
+        )
+
+    slot_rec = plan.get_slot(request.weekday, request.slot)
+    if slot_rec is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Slot not found: {request.weekday} {request.slot}",
+        )
+
+    slot_rec.note = request.note.strip() or None
     save_weekly_plan(plan)
     return _convert_to_response(plan)
 
