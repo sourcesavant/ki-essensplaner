@@ -46,7 +46,6 @@ from src.core.database import (
 )
 from src.models.recipe import Recipe, RecipeCreate
 from src.profile.preference_profile import ensure_profile_current
-from src.scrapers.bioland_huesgen import ensure_bioland_current
 from src.scoring.recipe_scorer import (
     ScoringContext,
     calculate_score,
@@ -54,6 +53,7 @@ from src.scoring.recipe_scorer import (
     is_recipe_viable,
 )
 from src.scoring.seasonality import get_seasonal_ingredients
+from src.scrapers.bioland_huesgen import ensure_bioland_current
 
 # Target ratio for favorites vs new recipes
 TARGET_FAVORITES_RATIO = 0.6
@@ -362,7 +362,9 @@ def _load_recipe_details(
                 servings=servings,
             )
 
-            if db_recipe is None:
+            if not any(line.strip() for line in full_recipe.ingredients):
+                continue
+            if db_recipe is None or db_recipe.ingredients != full_recipe.ingredients or db_recipe.servings != full_recipe.servings:
                 db_recipe = upsert_recipe(
                     RecipeCreate(
                         title=full_recipe.title,
@@ -370,8 +372,12 @@ def _load_recipe_details(
                         source_url=full_recipe.source_url,
                         prep_time_minutes=full_recipe.prep_time_minutes,
                         ingredients=full_recipe.ingredients,
-                        calories=full_recipe.calories,
-                        servings=full_recipe.servings,
+                        instructions=db_recipe.instructions if db_recipe else None,
+                        calories=full_recipe.calories if full_recipe.calories is not None else (db_recipe.calories if db_recipe else None),
+                        fat_g=db_recipe.fat_g if db_recipe else None,
+                        protein_g=db_recipe.protein_g if db_recipe else None,
+                        carbs_g=db_recipe.carbs_g if db_recipe else None,
+                        servings=full_recipe.servings or (db_recipe.servings if db_recipe else None),
                     )
                 )
             full_recipe.id = db_recipe.id
@@ -415,26 +421,12 @@ def _load_recipe_details(
                     f"{unavailable_title_ingredients}"
                 )
                 continue
-            # Persist URL as minimal recipe so it can be rated/blacklisted immediately.
-            if db_recipe is None:
-                try:
-                    db_recipe = upsert_recipe(
-                        RecipeCreate(
-                            title=recipe.title,
-                            source="eatsmarter",
-                            source_url=recipe.url,
-                            prep_time_minutes=recipe.prep_time_minutes,
-                            ingredients=[],
-                            calories=recipe.calories,
-                        )
-                    )
-                except Exception:
-                    db_recipe = None
-
-            # Keep the recipe with preliminary score, but include DB ID if available.
-            detailed_recipes.append(
-                replace(recipe, recipe_id=db_recipe.id if db_recipe else recipe.recipe_id)
-            )
+            # Do not offer title-only placeholders as selectable meals.
+            if db_recipe and any(line.strip() for line in db_recipe.ingredients):
+                detailed_recipes.append(replace(
+                    recipe, recipe_id=db_recipe.id, ingredients=db_recipe.ingredients,
+                    servings=db_recipe.servings,
+                ))
 
     return detailed_recipes
 
@@ -604,6 +596,8 @@ def _score_favorites(
     scored_favorites: list[ScoredRecipe] = []
 
     for recipe, cook_count in favorites:
+        if not any(line.strip() for line in recipe.ingredients):
+            continue
         # Check viability
         is_viable, _, _ = is_recipe_viable(recipe, context)
         if not is_viable:

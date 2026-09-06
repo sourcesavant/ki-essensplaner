@@ -39,7 +39,7 @@ class WeeklyPlanCard extends HTMLElement {
   }
 
   _callService(service, data = {}) {
-    this._hass.callService('ki_essensplaner', service, data);
+    return this._hass.callService('ki_essensplaner', service, data);
   }
 
   _selectRecipe(weekday, slot, recipeIndex) {
@@ -47,6 +47,8 @@ class WeeklyPlanCard extends HTMLElement {
       weekday: weekday,
       slot: slot,
       recipe_index: recipeIndex
+    }).catch((error) => {
+      window.alert(`Rezept konnte nicht ausgew\u00e4hlt werden: ${error.message || error}`);
     });
   }
 
@@ -57,6 +59,8 @@ class WeeklyPlanCard extends HTMLElement {
       weekday: weekday,
       slot: slot,
       recipe_url: url
+    }).catch((error) => {
+      window.alert(`Rezept konnte nicht hinzugef\u00fcgt werden: ${error.message || error}`);
     });
     return true;
   }
@@ -434,7 +438,10 @@ class ShoppingListCard extends HTMLElement {
     this._config = null;
     this._activeTab = 'bioland';
     this._checkedItems = new Set();
+    this._pendingChecks = new Map();
+    this._checkError = null;
     this._lastRenderKey = null;
+    this._lastListKey = null;
   }
 
   setConfig(config) {
@@ -480,19 +487,47 @@ class ShoppingListCard extends HTMLElement {
     this.render();
   }
 
+  _itemKey(item) {
+    return `${(item.ingredient || '').toLowerCase()}_${item.unit || ''}`;
+  }
+
+  _escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   _toggleItem(itemKey) {
-    if (this._checkedItems.has(itemKey)) {
-      this._checkedItems.delete(itemKey);
-    } else {
+    const newChecked = !this._checkedItems.has(itemKey);
+    if (newChecked) {
       this._checkedItems.add(itemKey);
+    } else {
+      this._checkedItems.delete(itemKey);
     }
-    const itemEl = this.shadowRoot?.querySelector(`.item[data-item-key="${itemKey}"]`);
+    // Optimistic UI update
+    const itemEl = this.shadowRoot?.querySelector(`.item[data-item-key="${CSS.escape(itemKey)}"]`);
     if (itemEl) {
-      itemEl.classList.toggle('checked', this._checkedItems.has(itemKey));
+      itemEl.classList.toggle('checked', newChecked);
       const checkbox = itemEl.querySelector('input[type="checkbox"]');
-      if (checkbox) checkbox.checked = this._checkedItems.has(itemKey);
+      if (checkbox) checkbox.checked = newChecked;
     }
     this._updateCheckedUi();
+    // Persist via HA service
+    const pending = { checked: newChecked };
+    this._pendingChecks.set(itemKey, pending);
+    this._checkError = null;
+    this._hass.callService('ki_essensplaner', 'toggle_shopping_item', {
+      item_key: itemKey,
+      checked: newChecked,
+    }).catch(() => {
+      this._checkError = 'Markierung konnte nicht gespeichert werden.';
+    }).finally(() => {
+      if (this._pendingChecks.get(itemKey) === pending) this._pendingChecks.delete(itemKey);
+      this.render();
+    });
   }
 
   _clearChecked() {
@@ -506,6 +541,18 @@ class ShoppingListCard extends HTMLElement {
       });
     }
     this._updateCheckedUi();
+    // Persist via HA service
+    const pending = { checked: false };
+    for (const item of this._currentItems || []) this._pendingChecks.set(this._itemKey(item), pending);
+    this._checkError = null;
+    this._hass.callService('ki_essensplaner', 'clear_checked_items', {}).catch(() => {
+      this._checkError = 'Markierungen konnten nicht gespeichert werden.';
+    }).finally(() => {
+      for (const [key, value] of this._pendingChecks) {
+        if (value === pending) this._pendingChecks.delete(key);
+      }
+      this.render();
+    });
   }
 
   _updateCheckedUi() {
@@ -515,8 +562,8 @@ class ShoppingListCard extends HTMLElement {
     const reweItems = reweState?.attributes?.items || [];
     const biolandCount = biolandItems.length;
     const reweCount = reweItems.length;
-    const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
-    const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
+    const biolandChecked = biolandItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
+    const reweChecked = reweItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
 
     const clearBtn = this.shadowRoot?.querySelector('.action-button.secondary');
     if (clearBtn) {
@@ -533,25 +580,38 @@ class ShoppingListCard extends HTMLElement {
     }
   }
 
-  _renderItem(item, index, store) {
-    const itemKey = `${store}_${index}`;
+  _renderItem(item) {
+    const itemKey = this._itemKey(item);
+    const escapedItemKey = this._escapeHtml(itemKey);
     const isChecked = this._checkedItems.has(itemKey);
     const amount = item.amount ? `${item.amount}` : '';
     const unit = item.unit || '';
     const ingredient = item.ingredient || '';
 
     return `
-      <div class="item ${isChecked ? 'checked' : ''}" data-item-key="${itemKey}">
+      <div class="item ${isChecked ? 'checked' : ''}" data-item-key="${escapedItemKey}">
         <input
+          class="item-toggle"
           type="checkbox"
+          data-item-key="${escapedItemKey}"
           ${isChecked ? 'checked' : ''}
-          onchange="this.getRootNode().host._toggleItem('${itemKey}')"
         />
         <span class="item-text">
-          ${amount} ${unit} <strong>${ingredient}</strong>
+          ${this._escapeHtml(amount)} ${this._escapeHtml(unit)} <strong>${this._escapeHtml(ingredient)}</strong>
         </span>
       </div>
     `;
+  }
+
+  _bindItemListeners() {
+    const toggles = this.shadowRoot?.querySelectorAll('.item-toggle') || [];
+    toggles.forEach((el) => {
+      el.addEventListener('change', (event) => {
+        const key = event.currentTarget?.dataset?.itemKey;
+        if (!key) return;
+        this._toggleItem(key);
+      });
+    });
   }
 
   render() {
@@ -583,15 +643,31 @@ class ShoppingListCard extends HTMLElement {
 
     const hasItems = (biolandCount + reweCount) > 0 || totalCount > 0;
 
-    const biolandChecked = biolandItems.filter((_, i) => this._checkedItems.has(`bioland_${i}`)).length;
-    const reweChecked = reweItems.filter((_, i) => this._checkedItems.has(`rewe_${i}`)).length;
+    const allItems = [...biolandItems, ...reweItems];
+    this._currentItems = allItems;
+    const week = biolandState?.attributes?.week_start || reweState?.attributes?.week_start;
+    if (this._lastWeek !== week) this._pendingChecks.clear();
+    this._lastWeek = week;
+    this._checkedItems = new Set(allItems.filter((item) => {
+      const pending = this._pendingChecks.get(this._itemKey(item));
+      return pending ? pending.checked : item.checked;
+    }).map((item) => this._itemKey(item)));
+    const missingRecipes = biolandState?.attributes?.missing_recipes
+      || reweState?.attributes?.missing_recipes || [];
+
+    const biolandChecked = biolandItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
+    const reweChecked = reweItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
 
     const renderKey = JSON.stringify({
       missing: missingEntities,
       active: this._activeTab,
       totalCount,
       biolandItems,
-      reweItems
+      reweItems,
+      missingRecipes,
+      week,
+      checked: [...this._checkedItems],
+      checkError: this._checkError,
     });
     if (this._lastRenderKey === renderKey) {
       return;
@@ -599,6 +675,8 @@ class ShoppingListCard extends HTMLElement {
     this._lastRenderKey = renderKey;
 
     this.shadowRoot.innerHTML = `
+      ${missingRecipes.length ? `<div role="alert">Einkaufsliste unvollst&#228;ndig: Zutaten fehlen f&#252;r ${missingRecipes.map((name) => this._escapeHtml(name)).join('; ')}. Bitte diese Rezepte erneut ausw&#228;hlen.</div>` : ''}
+      ${this._checkError ? `<div role="alert">${this._escapeHtml(this._checkError)}</div>` : ''}
       <style>
         :host {
           display: block;
@@ -735,7 +813,7 @@ class ShoppingListCard extends HTMLElement {
       </style>
       <ha-card class="card">
         <div class="card-header">
-          <div class="card-title">Einkaufsliste</div>
+          <div class="card-title">🛒 Einkaufsliste</div>
           <div class="card-stats">${totalCount} Artikel</div>
         </div>
 
@@ -768,11 +846,11 @@ class ShoppingListCard extends HTMLElement {
           <div class="item-list">
             ${this._activeTab === 'bioland' ? (
               biolandItems.length > 0
-                ? biolandItems.map((item, i) => this._renderItem(item, i, 'bioland')).join('')
+                ? biolandItems.map((item) => this._renderItem(item)).join('')
                 : '<div class="empty-tab">Keine Bioland-Artikel</div>'
             ) : (
               reweItems.length > 0
-                ? reweItems.map((item, i) => this._renderItem(item, i, 'rewe')).join('')
+                ? reweItems.map((item) => this._renderItem(item)).join('')
                 : '<div class="empty-tab">Keine Rewe-Artikel</div>'
             )}
           </div>
@@ -783,7 +861,7 @@ class ShoppingListCard extends HTMLElement {
               onclick="this.getRootNode().host._clearChecked()"
               ${this._checkedItems.size === 0 ? 'disabled' : ''}
             >
-              Markierungen loeschen (<span class="clear-count">${this._checkedItems.size}</span>)
+              Markierungen löschen (<span class="clear-count">${this._checkedItems.size}</span>)
             </button>
           </div>
 
@@ -801,6 +879,7 @@ class ShoppingListCard extends HTMLElement {
         `}
       </ha-card>
     `;
+    this._bindItemListeners();
 
     const newListEl = this.shadowRoot?.querySelector('.item-list');
     if (newListEl) {

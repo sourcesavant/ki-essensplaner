@@ -19,7 +19,7 @@ Example usage:
 Issue #21: Aggregiere Zutaten aus Wochenplan für Einkaufsliste
 """
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 from src.agents.models import WeeklyRecommendation
@@ -27,7 +27,9 @@ from src.core.database import (
     get_available_base_ingredients,
     get_connection,
     get_ingredient_synonyms,
+    get_recipe,
 )
+from src.profile.ingredient_parser import parse_ingredient
 
 
 @dataclass
@@ -63,6 +65,7 @@ class ShoppingList:
     household_size: int = 2
     scale_info: list[dict] = field(default_factory=list)
     multi_day_info: list[dict] = field(default_factory=list)
+    missing_recipes: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
         lines = [f"Einkaufsliste für Woche ab {self.week_start}", ""]
@@ -108,6 +111,7 @@ class ShoppingList:
         return {
             "week_start": self.week_start,
             "recipe_count": self.recipe_count,
+            "missing_recipes": self.missing_recipes,
             "household_size": self.household_size,
             "scale_info": self.scale_info,
             "multi_day_info": self.multi_day_info,
@@ -317,16 +321,16 @@ def round_amount(amount: float, unit: str | None) -> float:
     """
     if unit in ("gramm", "milliliter"):
         # Round to nearest 10 (e.g., 167g -> 170g)
-        return round(amount / 10) * 10
+        return round(amount / 10) * 10 if amount >= 10 else amount
     elif unit in ("stück", "scheibe"):
         # Round to whole numbers, minimum 1
         return max(1, round(amount))
     elif unit in ("esslöffel", "teelöffel"):
         # Round to nearest 0.5
-        return round(amount * 2) / 2
+        return round(amount * 2) / 2 if amount >= 0.5 else amount
     else:
         # Default: round to 1 decimal place
-        return round(amount, 1)
+        return round(amount, 1) if amount >= 0.1 else amount
 
 
 def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingList:
@@ -390,6 +394,7 @@ def generate_shopping_list(
     )
 
     recipe_count = 0
+    missing_recipes: list[str] = []
     scale_info: list[dict] = []
 
     # Process each slot
@@ -403,7 +408,8 @@ def generate_shopping_list(
             continue
 
         # Calculate scaling factors
-        recipe_servings = recipe.servings or 2  # Default: 2 servings
+        stored = get_recipe(recipe.recipe_id) if recipe.recipe_id else None
+        recipe_servings = (stored.servings if stored and stored.ingredients else recipe.servings) or 2  # Default: 2 servings
         household_factor = household_size / recipe_servings
 
         # Multi-day factor
@@ -432,49 +438,37 @@ def generate_shopping_list(
                 "factor": round(total_factor, 2),
             })
 
-        # Get ingredients - prefer parsed DB ingredients, fallback to raw recipe ingredients
+        # Match cached normalization to each current original line. Never let a
+        # partial or stale cache replace the complete ingredient list.
+        raw = stored.ingredients if stored and stored.ingredients else recipe.ingredients
+        recipe_count += 1
+        if not any(line.strip() for line in raw):
+            missing_recipes.append(f"{recipe_label}: {recipe.title}")
+            continue
+        cached = defaultdict(deque)
         if recipe.recipe_id:
-            parsed = _get_parsed_ingredients_for_recipe(recipe.recipe_id)
-            recipe_count += 1
-
-            if parsed:
-                for ing in parsed:
-                    ingredient = ing["ingredient"]
-                    unit = _normalize_unit(ing["unit"])
-                    amount = ing["amount"]
-
-                    key = (ingredient.lower(), unit)
-
-                    aggregated[key].setdefault("display_name", ingredient)
-
-                    if amount:
-                        # Scale the amount
-                        scaled_amount = amount * total_factor
-                        aggregated[key]["amount"] += scaled_amount
-                        aggregated[key]["has_amount"] = True
-
-                    if recipe_label not in aggregated[key]["recipes"]:
-                        aggregated[key]["recipes"].append(recipe_label)
-            elif recipe.ingredients:
-                for ing_str in recipe.ingredients:
-                    # Simple parsing: just use the ingredient string as-is
-                    key = (ing_str.lower(), None)
-                    aggregated[key]["has_amount"] = False
-
-                    if recipe_label not in aggregated[key]["recipes"]:
-                        aggregated[key]["recipes"].append(recipe_label)
-
-        elif recipe.ingredients:
-            # Fallback: use raw ingredients from recipe (for new recipes without DB entry)
-            recipe_count += 1
-
-            for ing_str in recipe.ingredients:
-                # Simple parsing: just use the ingredient string as-is
-                key = (ing_str.lower(), None)
-                aggregated[key]["has_amount"] = False
-
-                if recipe_label not in aggregated[key]["recipes"]:
-                    aggregated[key]["recipes"].append(recipe_label)
+            for ing in _get_parsed_ingredients_for_recipe(recipe.recipe_id):
+                cached[(ing.get("original") or "").strip()].append(ing)
+        for line in raw:
+            line = line.strip()
+            if not line:
+                continue
+            parsed = parse_ingredient(line)
+            ingredient, unit, amount = parsed.name, parsed.unit, parsed.amount
+            if cached[line]:
+                ing = cached[line].popleft()
+                ingredient = ing["ingredient"] or ingredient
+            # Keep unparseable instructions verbatim rather than losing detail.
+            if amount is None or not ingredient:
+                ingredient, unit, amount = line, None, None
+            key = (ingredient.lower(), unit)
+            entry = aggregated[key]
+            entry.setdefault("display_name", ingredient)
+            if amount is not None:
+                entry["amount"] += amount * total_factor
+                entry["has_amount"] = True
+            if recipe_label not in entry["recipes"]:
+                entry["recipes"].append(recipe_label)
 
     # Convert to ShoppingItems with rounded amounts
     items = []
@@ -519,6 +513,7 @@ def generate_shopping_list(
         household_size=household_size,
         scale_info=scale_info,
         multi_day_info=multi_day_info,
+        missing_recipes=missing_recipes,
     )
 
 

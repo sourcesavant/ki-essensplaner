@@ -1,14 +1,12 @@
 """Weekly plan API endpoints."""
 
-import asyncio
 from datetime import date, datetime
-from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from src.agents.models import (
-    WEEKDAYS,
     MEAL_SLOTS,
+    WEEKDAYS,
     ScoredRecipe,
     WeeklyRecommendation,
     load_weekly_plan,
@@ -21,9 +19,9 @@ from src.api.schemas.weekly_plan import (
     CompleteWeeklyPlanResponse,
     GenerateWeeklyPlanResponse,
     MultiDayGroupResponse,
-    MultiDayResponse,
     MultiDayPreferencesRequest,
     MultiDayPreferencesResponse,
+    MultiDayResponse,
     RecipeResponse,
     SelectRecipeRequest,
     SelectRecipeUrlRequest,
@@ -36,19 +34,20 @@ from src.api.schemas.weekly_plan import (
     WeeklyPlanHistoryResponse,
     WeeklyPlanResponse,
 )
+from src.core.database import (
+    get_completed_ha_weeks,
+    get_ha_week_meals,
+    get_recipe,
+    get_recipe_by_url,
+    upsert_meal_plan,
+    upsert_recipe,
+)
 from src.core.user_config import (
     get_multi_day_preferences,
     get_rotation_policy,
     get_skipped_slots,
     set_multi_day_preferences,
     set_skipped_slots,
-)
-from src.core.database import (
-    get_completed_ha_weeks,
-    get_ha_week_meals,
-    get_recipe_by_url,
-    upsert_meal_plan,
-    upsert_recipe,
 )
 from src.models.meal_plan import DayOfWeek, MealCreate, MealPlanCreate, MealSlot
 from src.scrapers.recipe_fetcher import scrape_recipe
@@ -589,6 +588,9 @@ def select_recipe(
             detail=f"Recipe index out of range (0-{len(slot_rec.recommendations) - 1})",
         )
 
+    if request.recipe_index >= 0:
+        _ensure_recipe_ingredients(slot_rec.recommendations[request.recipe_index])
+
     # Update selection
     success = plan.select_recipe(request.weekday, request.slot, request.recipe_index)
     if not success:
@@ -633,6 +635,26 @@ def update_slot_note(
     slot_rec.note = request.note.strip() or None
     save_weekly_plan(plan)
     return _convert_to_response(plan)
+
+
+def _ensure_recipe_ingredients(recipe: ScoredRecipe) -> None:
+    """Resolve empty recipe placeholders before committing a selection."""
+    if any(line.strip() for line in recipe.ingredients):
+        return
+    stored = get_recipe(recipe.recipe_id) if recipe.recipe_id else None
+    if stored is None and recipe.url:
+        stored = get_recipe_by_url(recipe.url)
+    if not stored or not any(line.strip() for line in stored.ingredients):
+        try:
+            fetched = scrape_recipe(recipe.url) if recipe.url else None
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Zutaten konnten nicht geladen werden. Bitte erneut versuchen.") from exc
+        if not fetched or not any(line.strip() for line in fetched.ingredients):
+            raise HTTPException(status_code=422, detail="Das Rezept enthält keine auslesbaren Zutaten und wurde nicht ausgewählt.")
+        stored = upsert_recipe(fetched)
+    recipe.recipe_id = stored.id
+    recipe.ingredients = stored.ingredients
+    recipe.servings = stored.servings
 
 
 @router.post("/select-url", response_model=WeeklyPlanResponse)
@@ -688,24 +710,29 @@ def select_recipe_url(
     # Check if the recipe is already in the slot recommendations
     for idx, rec in enumerate(slot_rec.recommendations):
         if rec.url == recipe_url:
+            _ensure_recipe_ingredients(rec)
             slot_rec.selected_index = idx
             save_weekly_plan(plan)
             return _convert_to_response(plan)
 
     # Use existing DB entry if present, otherwise scrape
     recipe = get_recipe_by_url(recipe_url)
-    if recipe is None:
-        recipe_data = scrape_recipe(recipe_url)
-        if recipe_data is None:
+    if recipe is None or not any(line.strip() for line in recipe.ingredients):
+        try:
+            recipe_data = scrape_recipe(recipe_url)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="Zutaten konnten nicht geladen werden. Bitte erneut versuchen.") from exc
+        if recipe_data is None or not any(line.strip() for line in recipe_data.ingredients):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Failed to scrape recipe from URL",
+                detail="Zutaten konnten nicht geladen werden. Das Rezept wurde nicht hinzugefügt.",
             )
         recipe = upsert_recipe(recipe_data)
     else:
         # If recipe already exists, prefer selecting existing recommendation by ID
         for idx, rec in enumerate(slot_rec.recommendations):
             if rec.recipe_id and recipe.id and rec.recipe_id == recipe.id:
+                _ensure_recipe_ingredients(rec)
                 slot_rec.selected_index = idx
                 save_weekly_plan(plan)
                 return _convert_to_response(plan)

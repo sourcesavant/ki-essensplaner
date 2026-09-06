@@ -1,12 +1,11 @@
 """DataUpdateCoordinator for KI-Essensplaner."""
 
 import asyncio
-from datetime import timedelta
 import logging
+from datetime import timedelta
 from typing import Any
 
 import aiohttp
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -356,6 +355,11 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if split_list is not None or "split_shopping_list" in data:
                 data["split_shopping_list"] = split_list
                 self._cache["split_shopping_list"] = split_list
+
+            checked = await _fetch_json_no_cache(session, "/api/shopping-list/checked", not_found_none=True)
+            if checked is not None:
+                data["shopping_checked"] = checked
+                self._cache["shopping_checked"] = checked
 
         if data:
             self.async_set_updated_data(data)
@@ -959,14 +963,12 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status not in (200, 204):
-                        _LOGGER.error(
-                            "Failed to toggle shopping item: %s", await response.text()
-                        )
-                        return
+                        raise UpdateFailed(f"Failed to toggle shopping item: {await response.text()}")
             self._cache.pop("shopping_checked", None)
             await self.async_request_refresh()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error toggling shopping item: %s", err)
+            raise UpdateFailed(f"Error toggling shopping item: {err}") from err
 
     async def clear_checked_items(self) -> None:
         """Clear all checked shopping items for the current week."""
@@ -978,14 +980,12 @@ class EssensplanerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status not in (200, 204):
-                        _LOGGER.error(
-                            "Failed to clear checked items: %s", await response.text()
-                        )
-                        return
+                        raise UpdateFailed(f"Failed to clear checked items: {await response.text()}")
             self._cache.pop("shopping_checked", None)
             await self.async_request_refresh()
         except aiohttp.ClientError as err:
             _LOGGER.error("Error clearing checked items: %s", err)
+            raise UpdateFailed(f"Error clearing checked items: {err}") from err
 
     async def get_split_shopping_list(self) -> dict[str, Any] | None:
         """Get shopping list split by store (Bioland/Rewe).

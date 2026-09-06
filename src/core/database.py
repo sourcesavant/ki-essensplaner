@@ -1,8 +1,8 @@
 """SQLite database setup and CRUD operations."""
 
 import json
-import sqlite3
 import shutil
+import sqlite3
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, datetime
@@ -104,6 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_excluded_ingredients_name ON excluded_ingredients
 CREATE TABLE IF NOT EXISTS shopping_checked_items (
     item_key  TEXT NOT NULL,
     week_start TEXT NOT NULL,
+    requirement TEXT,
     PRIMARY KEY (item_key, week_start)
 );
 """
@@ -114,6 +115,9 @@ def init_db() -> None:
     ensure_directories()
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(shopping_checked_items)")}
+        if "requirement" not in columns:
+            conn.execute("ALTER TABLE shopping_checked_items ADD COLUMN requirement TEXT")
 
 
 def migrate_db_if_needed() -> None:
@@ -259,6 +263,8 @@ def upsert_recipe(recipe: RecipeCreate) -> Recipe:
                         recipe.source_url,
                     ),
                 )
+                if existing.ingredients != recipe.ingredients:
+                    conn.execute("DELETE FROM parsed_ingredients WHERE recipe_id = ?", (existing.id,))
             return Recipe(
                 id=existing.id,
                 title=recipe.title,
@@ -1028,23 +1034,40 @@ def is_ingredient_excluded(ingredient_name: str) -> bool:
 # Shopping checked items CRUD operations
 
 
-def get_checked_items(week_start: str) -> set[str]:
+def get_checked_items(week_start: str, requirements: dict | None = None) -> set[str]:
     """Get all checked item keys for a given week."""
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT item_key FROM shopping_checked_items WHERE week_start = ?",
+            "SELECT item_key, requirement FROM shopping_checked_items WHERE week_start = ?",
             (week_start,),
         ).fetchall()
-        return {row["item_key"] for row in rows}
+        checked = set()
+        for row in rows:
+            key = row["item_key"]
+            if requirements is not None:
+                current = requirements.get(key)
+                previous = json.loads(row["requirement"]) if row["requirement"] else None
+                reopen = current is None or previous is None
+                if not reopen:
+                    old_amount, new_amount = previous["amount"], current["amount"]
+                    if old_amount is not None and new_amount is not None:
+                        reopen = new_amount > old_amount
+                    else:
+                        reopen = old_amount != new_amount or previous["recipes"] != current["recipes"]
+                if reopen:
+                    conn.execute("DELETE FROM shopping_checked_items WHERE week_start = ? AND item_key = ?", (week_start, key))
+                    continue
+            checked.add(key)
+        return checked
 
 
-def set_item_checked(week_start: str, item_key: str, checked: bool) -> None:
+def set_item_checked(week_start: str, item_key: str, checked: bool, requirement: dict | None = None) -> None:
     """Set an item as checked or unchecked for a given week."""
     with get_connection() as conn:
         if checked:
             conn.execute(
-                "INSERT OR IGNORE INTO shopping_checked_items (item_key, week_start) VALUES (?, ?)",
-                (item_key, week_start),
+                "INSERT OR REPLACE INTO shopping_checked_items (item_key, week_start, requirement) VALUES (?, ?, ?)",
+                (item_key, week_start, json.dumps(requirement) if requirement is not None else None),
             )
         else:
             conn.execute(

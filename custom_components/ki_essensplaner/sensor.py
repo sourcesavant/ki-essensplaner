@@ -819,6 +819,7 @@ class BiolandCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntit
         return {
             "items": items,
             "week_start": split.get("week_start"),
+            "missing_recipes": split.get("missing_recipes", []),
         }
 
 
@@ -870,6 +871,7 @@ class ReweCountSensor(CoordinatorEntity[EssensplanerCoordinator], SensorEntity):
         return {
             "items": items,
             "week_start": split.get("week_start"),
+            "missing_recipes": split.get("missing_recipes", []),
         }
 
 

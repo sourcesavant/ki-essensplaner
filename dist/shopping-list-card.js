@@ -13,6 +13,8 @@ class ShoppingListCard extends HTMLElement {
     this._config = null;
     this._activeTab = 'bioland';
     this._checkedItems = new Set();
+    this._pendingChecks = new Map();
+    this._checkError = null;
     this._lastRenderKey = null;
     this._lastListKey = null;
   }
@@ -89,9 +91,17 @@ class ShoppingListCard extends HTMLElement {
     }
     this._updateCheckedUi();
     // Persist via HA service
+    const pending = { checked: newChecked };
+    this._pendingChecks.set(itemKey, pending);
+    this._checkError = null;
     this._hass.callService('ki_essensplaner', 'toggle_shopping_item', {
       item_key: itemKey,
       checked: newChecked,
+    }).catch(() => {
+      this._checkError = 'Markierung konnte nicht gespeichert werden.';
+    }).finally(() => {
+      if (this._pendingChecks.get(itemKey) === pending) this._pendingChecks.delete(itemKey);
+      this.render();
     });
   }
 
@@ -107,7 +117,17 @@ class ShoppingListCard extends HTMLElement {
     }
     this._updateCheckedUi();
     // Persist via HA service
-    this._hass.callService('ki_essensplaner', 'clear_checked_items', {});
+    const pending = { checked: false };
+    for (const item of this._currentItems || []) this._pendingChecks.set(this._itemKey(item), pending);
+    this._checkError = null;
+    this._hass.callService('ki_essensplaner', 'clear_checked_items', {}).catch(() => {
+      this._checkError = 'Markierungen konnten nicht gespeichert werden.';
+    }).finally(() => {
+      for (const [key, value] of this._pendingChecks) {
+        if (value === pending) this._pendingChecks.delete(key);
+      }
+      this.render();
+    });
   }
 
   _updateCheckedUi() {
@@ -198,27 +218,17 @@ class ShoppingListCard extends HTMLElement {
 
     const hasItems = (biolandCount + reweCount) > 0 || totalCount > 0;
 
-    // Hydration strategy:
-    // - compositionKey tracks which items exist (ingredients + units, no checked state).
-    // - On composition change (new week / plan edit): full reset from server.
-    // - Same composition: one-way merge — add any server-checked items not yet local
-    //   (cross-device adds propagate within the poll interval, ~30s).
-    //   Local unchecks are never overridden, avoiding the race condition where a fast
-    //   double-check loses the second item when the first coordinator refresh arrives.
     const allItems = [...biolandItems, ...reweItems];
-    const compositionKey = JSON.stringify(allItems.map((i) => this._itemKey(i)));
-    if (compositionKey !== this._lastListKey) {
-      // New week or recipe change → full reset from server state
-      this._lastListKey = compositionKey;
-      this._checkedItems = new Set(
-        allItems.filter((i) => i.checked).map((i) => this._itemKey(i))
-      );
-    } else {
-      // Same list → only add server-checked items (cross-device sync for adds)
-      for (const item of allItems) {
-        if (item.checked) this._checkedItems.add(this._itemKey(item));
-      }
-    }
+    this._currentItems = allItems;
+    const week = biolandState?.attributes?.week_start || reweState?.attributes?.week_start;
+    if (this._lastWeek !== week) this._pendingChecks.clear();
+    this._lastWeek = week;
+    this._checkedItems = new Set(allItems.filter((item) => {
+      const pending = this._pendingChecks.get(this._itemKey(item));
+      return pending ? pending.checked : item.checked;
+    }).map((item) => this._itemKey(item)));
+    const missingRecipes = biolandState?.attributes?.missing_recipes
+      || reweState?.attributes?.missing_recipes || [];
 
     const biolandChecked = biolandItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
     const reweChecked = reweItems.filter((item) => this._checkedItems.has(this._itemKey(item))).length;
@@ -229,6 +239,10 @@ class ShoppingListCard extends HTMLElement {
       totalCount,
       biolandItems,
       reweItems,
+      missingRecipes,
+      week,
+      checked: [...this._checkedItems],
+      checkError: this._checkError,
     });
     if (this._lastRenderKey === renderKey) {
       return;
@@ -236,6 +250,8 @@ class ShoppingListCard extends HTMLElement {
     this._lastRenderKey = renderKey;
 
     this.shadowRoot.innerHTML = `
+      ${missingRecipes.length ? `<div role="alert">Einkaufsliste unvollst&#228;ndig: Zutaten fehlen f&#252;r ${missingRecipes.map((name) => this._escapeHtml(name)).join('; ')}. Bitte diese Rezepte erneut ausw&#228;hlen.</div>` : ''}
+      ${this._checkError ? `<div role="alert">${this._escapeHtml(this._checkError)}</div>` : ''}
       <style>
         :host {
           display: block;

@@ -134,7 +134,22 @@ def parse_ingredient(ingredient_str: str) -> ParsedIngredient:
     # Pattern handles: "200 g Reis", "2 EL Öl", "1 x 400g tin of beans"
 
     # First, handle "X x Yunit" pattern (e.g., "1 x 400g tin")
-    text_clean = re.sub(r'(\d+)\s*x\s*(\d+)', r'\2', text_clean)
+    text_clean = re.sub(
+        r'^(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)',
+        lambda m: str(int(m[1]) * float(m[2].replace(',', '.'))), text_clean,
+    )
+    for fraction, value in {"½": "0.5", "¼": "0.25", "¾": "0.75"}.items():
+        text_clean = re.sub(r'^(\d+)\s*' + fraction, lambda m: str(int(m[1]) + float(value)), text_clean)
+        text_clean = re.sub('^' + fraction, value, text_clean)
+    fraction = re.match(r'^(?:(\d+)\s+)?(\d+)\s*/\s*(\d+)\s*(.*)$', text_clean)
+    if fraction:
+        whole, numerator, denominator, rest = fraction.groups()
+        if int(denominator) == 0:
+            return ParsedIngredient(original=original, amount=None, unit=None, name=original)
+        text_clean = f"{int(whole or 0) + int(numerator) / int(denominator)} {rest}"
+    # Ranges and other ambiguous quantities must remain visible verbatim.
+    if re.match(r'^\d+(?:[.,]\d+)?\s*[-–]', text_clean):
+        return ParsedIngredient(original=original, amount=None, unit=None, name=original)
 
     # Main pattern: number (with optional decimal) + optional unit + rest
     pattern = r'^(\d+(?:[.,]\d+)?)\s*([a-zA-ZäöüÄÖÜß]+)?\s*(.*)$'

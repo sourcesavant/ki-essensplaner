@@ -121,6 +121,8 @@ class WeeklyPlanCard extends HTMLElement {
       weekday: weekday,
       slot: slot,
       recipe_index: recipeIndex
+    }).catch((error) => {
+      window.alert(`Rezept konnte nicht ausgewählt werden: ${error.message || error}`);
     });
   }
 
@@ -131,6 +133,8 @@ class WeeklyPlanCard extends HTMLElement {
       weekday: weekday,
       slot: slot,
       recipe_url: url
+    }).catch((error) => {
+      window.alert(`Rezept konnte nicht hinzugefügt werden: ${error.message || error}`);
     });
     return true;
   }

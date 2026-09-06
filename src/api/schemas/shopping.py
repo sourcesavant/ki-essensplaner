@@ -17,6 +17,7 @@ class ShoppingListResponse(BaseModel):
 
     week_start: str
     recipe_count: int
+    missing_recipes: list[str] = Field(default_factory=list)
     items: list[ShoppingItemResponse] = Field(default_factory=list)
 
 
@@ -24,6 +25,7 @@ class SplitShoppingListResponse(BaseModel):
     """Shopping list split by store (Bioland/Rewe)."""
 
     week_start: str
+    missing_recipes: list[str] = Field(default_factory=list)
     bioland: list[ShoppingItemResponse] = Field(default_factory=list)
     rewe: list[ShoppingItemResponse] = Field(default_factory=list)
 

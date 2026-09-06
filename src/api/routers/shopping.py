@@ -54,6 +54,7 @@ def get_shopping_list(_token: str = Depends(verify_token)) -> ShoppingListRespon
     return ShoppingListResponse(
         week_start=shopping_list.week_start,
         recipe_count=shopping_list.recipe_count,
+        missing_recipes=shopping_list.missing_recipes,
         items=[_convert_item(item) for item in shopping_list.items],
     )
 
@@ -83,27 +84,30 @@ def get_split_shopping_list(
 
     return SplitShoppingListResponse(
         week_start=split_list.week_start,
+        missing_recipes=shopping_list.missing_recipes,
         bioland=[_convert_item(item) for item in split_list.bioland],
         rewe=[_convert_item(item) for item in split_list.rewe],
     )
 
 
-def _get_current_week_start() -> str:
-    """Return the week_start of the current plan, or raise 404."""
+def _current_requirements() -> tuple[str, dict]:
     plan = load_weekly_plan()
     if plan is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No weekly plan found.",
-        )
-    return plan.week_start
+        raise HTTPException(status_code=404, detail="No weekly plan found.")
+    shopping = generate_shopping_list(plan)
+    return plan.week_start, {
+        f"{item.ingredient.lower()}_{item.unit or ''}": {
+            "amount": item.amount, "recipes": sorted(item.recipes),
+        }
+        for item in shopping.items
+    }
 
 
 @router.get("/checked", response_model=CheckedItemsResponse)
 def get_checked(_token: str = Depends(verify_token)) -> CheckedItemsResponse:
     """Return checked item keys for the current week."""
-    week_start = _get_current_week_start()
-    checked = get_checked_items(week_start)
+    week_start, requirements = _current_requirements()
+    checked = get_checked_items(week_start, requirements)
     return CheckedItemsResponse(week_start=week_start, checked_items=sorted(checked))
 
 
@@ -112,12 +116,14 @@ def toggle_checked(
     body: ToggleCheckedRequest, _token: str = Depends(verify_token)
 ) -> None:
     """Mark or unmark a shopping item as checked."""
-    week_start = _get_current_week_start()
-    set_item_checked(week_start, body.item_key, body.checked)
+    week_start, requirements = _current_requirements()
+    if body.checked and body.item_key not in requirements:
+        raise HTTPException(status_code=409, detail="Der Artikel ist nicht mehr auf der Einkaufsliste.")
+    set_item_checked(week_start, body.item_key, body.checked, requirements.get(body.item_key))
 
 
 @router.delete("/checked", status_code=status.HTTP_204_NO_CONTENT)
 def delete_checked(_token: str = Depends(verify_token)) -> None:
     """Clear all checked items for the current week."""
-    week_start = _get_current_week_start()
+    week_start, _ = _current_requirements()
     clear_checked_items(week_start)
