@@ -279,6 +279,8 @@ class WeeklyPlanCard extends HTMLElement {
           border-radius: 4px;
           padding: 8px;
           min-height: 120px;
+          min-width: 0;
+          box-sizing: border-box;
         }
         .slot.empty {
           opacity: 0.5;
@@ -297,10 +299,12 @@ class WeeklyPlanCard extends HTMLElement {
         }
         .slot-content {
           font-size: 13px;
+          min-width: 0;
         }
         .recipe-title {
           margin-bottom: 4px;
           line-height: 1.3;
+          overflow-wrap: anywhere;
         }
         .recipe-title a {
           color: var(--primary-color);
@@ -344,9 +348,15 @@ class WeeklyPlanCard extends HTMLElement {
           gap: 6px;
           margin-top: 6px;
           align-items: center;
+          min-width: 0;
+          position: relative;
+          z-index: 1;
         }
         .custom-url-input {
           flex: 1;
+          min-width: 0;
+          width: 100%;
+          box-sizing: border-box;
           padding: 4px 6px;
           border: 1px solid var(--divider-color);
           border-radius: 4px;
