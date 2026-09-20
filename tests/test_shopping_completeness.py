@@ -64,6 +64,31 @@ def test_raw_ingredients_scale_for_household_and_reuse():
     assert result.recipe_count == 1
 
 
+def test_four_servings_cover_two_days_for_two_people(db):
+    recipe = db.upsert_recipe(
+        RecipeCreate(
+            title="Test",
+            source="test",
+            source_url="https://example.com/recipe",
+            ingredients=["200 g Reis"],
+            servings=2,  # Deliberately stale database metadata.
+        )
+    )
+    plan_recipe = ScoredRecipe(
+        "Test", "https://example.com/recipe", 1, "", False,
+        recipe_id=recipe.id, ingredients=["200 g Reis"], servings=4,
+    )
+    plan = WeeklyRecommendation(week_start="2026-09-05", slots=[
+        SlotRecommendation("Montag", "Mittagessen", [plan_recipe], prep_days=2),
+        SlotRecommendation("Dienstag", "Mittagessen", reuse_from=("Montag", "Mittagessen")),
+    ])
+
+    result = generate_shopping_list(plan, household_size=2)
+
+    # 4 portions in the recipe = 2 portions per day for two days.
+    assert next(i.amount for i in result.items if i.ingredient == "reis") == 200
+
+
 def test_missing_ingredients_are_reported():
     result = generate_shopping_list(make_plan([]), 2)
     assert result.items == []

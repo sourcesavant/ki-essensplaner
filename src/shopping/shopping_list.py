@@ -409,7 +409,12 @@ def generate_shopping_list(
 
         # Calculate scaling factors
         stored = get_recipe(recipe.recipe_id) if recipe.recipe_id else None
-        recipe_servings = (stored.servings if stored and stored.ingredients else recipe.servings) or 2  # Default: 2 servings
+        # Prefer the servings stored on the selected recipe.  The database row
+        # is still used for ingredients, but may contain an older servings
+        # value after a recipe was re-scraped.  Using that stale value here
+        # can turn a four-serving recipe for two days into twice the required
+        # amount.
+        recipe_servings = (recipe.servings or (stored.servings if stored else None) or 2)
         household_factor = household_size / recipe_servings
 
         # Multi-day factor
