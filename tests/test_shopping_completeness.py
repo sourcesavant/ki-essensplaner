@@ -113,6 +113,28 @@ def test_current_recipe_uses_database_servings_when_plan_is_stale(db):
     assert next(i.amount for i in result.items if i.ingredient == "hackfleisch") == 500
 
 
+def test_missing_servings_are_read_from_recipe_source(monkeypatch):
+    recipe = ScoredRecipe(
+        "Smarte Pasta bolognese",
+        "https://eatsmarter.de/rezepte/smarte-pasta-bolognese",
+        1, "", False,
+        ingredients=["500 g Hackfleisch"], servings=None,
+    )
+    plan = WeeklyRecommendation(week_start="2026-09-05", slots=[
+        SlotRecommendation("Montag", "Mittagessen", [recipe], prep_days=2),
+        SlotRecommendation("Dienstag", "Mittagessen", reuse_from=("Montag", "Mittagessen")),
+    ])
+
+    class Scraper:
+        def yields(self):
+            return "4 servings"
+
+    monkeypatch.setattr("recipe_scrapers.scrape_me", lambda url: Scraper())
+    result = generate_shopping_list(plan, household_size=2)
+
+    assert next(i.amount for i in result.items if i.ingredient == "hackfleisch") == 500
+
+
 def test_missing_ingredients_are_reported():
     result = generate_shopping_list(make_plan([]), 2)
     assert result.items == []

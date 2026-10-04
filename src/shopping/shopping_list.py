@@ -352,7 +352,27 @@ def _get_recipe_servings(recipe, stored) -> int:
                 continue
             if value > 0:
                 candidates.append(value)
-    return max(candidates, default=2)
+    if candidates:
+        return max(candidates)
+
+    # Older plans may contain a recipe without serving metadata.  In that
+    # case, recover the value from the recipe page before falling back to the
+    # historical default of two servings.  This is especially important for
+    # meal prep: a four-serving recipe otherwise gets multiplied twice for
+    # two people eating it on two days.
+    url = getattr(recipe, "url", None) or getattr(stored, "source_url", None)
+    if url:
+        try:
+            from recipe_scrapers import scrape_me
+            from src.scrapers.recipe_fetcher import parse_servings
+
+            servings = parse_servings(scrape_me(url).yields())
+            if servings and servings > 0:
+                return servings
+        except Exception:
+            pass
+
+    return 2
 
 
 def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingList:
