@@ -343,8 +343,10 @@ def _get_recipe_servings(recipe, stored) -> int:
     value is the safe choice: it prevents a stale low value from multiplying
     a recipe that already contains enough food for several days.
     """
+    recipe_value = getattr(recipe, "servings", None)
+    stored_value = getattr(stored, "servings", None)
     candidates = []
-    for value in (getattr(recipe, "servings", None), getattr(stored, "servings", None)):
+    for value in (recipe_value, stored_value):
         if value is not None:
             try:
                 value = int(value)
@@ -352,7 +354,16 @@ def _get_recipe_servings(recipe, stored) -> int:
                 continue
             if value > 0:
                 candidates.append(value)
-    if candidates:
+    # A missing value in the persisted weekly plan is common for older
+    # selections.  A database value of two is also the historical fallback,
+    # not reliable metadata, so validate it against the source page first.
+    plan_has_servings = recipe_value is not None and any(
+        isinstance(value, int) and value > 0 for value in [recipe_value]
+    )
+    stored_is_reliable = stored_value is not None and any(
+        isinstance(value, int) and value > 2 for value in [stored_value]
+    )
+    if candidates and (plan_has_servings or stored_is_reliable):
         return max(candidates)
 
     # Older plans may contain a recipe without serving metadata.  In that
@@ -372,7 +383,7 @@ def _get_recipe_servings(recipe, stored) -> int:
         except Exception:
             pass
 
-    return 2
+    return max(candidates, default=2)
 
 
 def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingList:

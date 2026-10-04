@@ -135,6 +135,35 @@ def test_missing_servings_are_read_from_recipe_source(monkeypatch):
     assert next(i.amount for i in result.items if i.ingredient == "hackfleisch") == 500
 
 
+def test_stale_database_default_is_replaced_by_recipe_source(db, monkeypatch):
+    recipe = db.upsert_recipe(
+        RecipeCreate(
+            title="Smarte Pasta bolognese",
+            source="eatsmarter",
+            source_url="https://eatsmarter.de/rezepte/smarte-pasta-bolognese",
+            ingredients=["500 g Hackfleisch"],
+            servings=2,
+        )
+    )
+    plan_recipe = ScoredRecipe(
+        "Smarte Pasta bolognese", recipe.source_url, 1, "", False,
+        recipe_id=recipe.id, ingredients=recipe.ingredients, servings=None,
+    )
+    plan = WeeklyRecommendation(week_start="2026-09-05", slots=[
+        SlotRecommendation("Montag", "Mittagessen", [plan_recipe], prep_days=2),
+        SlotRecommendation("Dienstag", "Mittagessen", reuse_from=("Montag", "Mittagessen")),
+    ])
+
+    class Scraper:
+        def yields(self):
+            return "4 servings"
+
+    monkeypatch.setattr("recipe_scrapers.scrape_me", lambda url: Scraper())
+    result = generate_shopping_list(plan, household_size=2)
+
+    assert next(i.amount for i in result.items if i.ingredient == "hackfleisch") == 500
+
+
 def test_missing_ingredients_are_reported():
     result = generate_shopping_list(make_plan([]), 2)
     assert result.items == []
