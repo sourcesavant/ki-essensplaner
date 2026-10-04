@@ -644,10 +644,20 @@ def _ensure_recipe_ingredients(recipe: ScoredRecipe) -> None:
     stored = get_recipe(recipe.recipe_id) if recipe.recipe_id else None
     if stored is None and recipe.url:
         stored = get_recipe_by_url(recipe.url)
-    if stored and any(line.strip() for line in stored.ingredients) and stored.servings:
+    if (
+        stored
+        and any(line.strip() for line in stored.ingredients)
+        and stored.servings
+        and stored.servings > 2
+    ):
         recipe.servings = stored.servings
         return
-    if not stored or not any(line.strip() for line in stored.ingredients) or not stored.servings:
+    if (
+        not stored
+        or not any(line.strip() for line in stored.ingredients)
+        or not stored.servings
+        or stored.servings <= 2
+    ):
         try:
             fetched = scrape_recipe(recipe.url) if recipe.url else None
         except Exception as exc:
