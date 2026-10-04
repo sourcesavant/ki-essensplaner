@@ -89,6 +89,30 @@ def test_four_servings_cover_two_days_for_two_people(db):
     assert next(i.amount for i in result.items if i.ingredient == "reis") == 200
 
 
+def test_current_recipe_uses_database_servings_when_plan_is_stale(db):
+    recipe = db.upsert_recipe(
+        RecipeCreate(
+            title="Test",
+            source="test",
+            source_url="https://example.com/recipe",
+            ingredients=["500 g Hackfleisch"],
+            servings=4,
+        )
+    )
+    plan_recipe = ScoredRecipe(
+        "Test", "https://example.com/recipe", 1, "", False,
+        recipe_id=recipe.id, ingredients=["500 g Hackfleisch"], servings=None,
+    )
+    plan = WeeklyRecommendation(week_start="2026-09-05", slots=[
+        SlotRecommendation("Montag", "Mittagessen", [plan_recipe], prep_days=2),
+        SlotRecommendation("Dienstag", "Mittagessen", reuse_from=("Montag", "Mittagessen")),
+    ])
+
+    result = generate_shopping_list(plan, household_size=2)
+
+    assert next(i.amount for i in result.items if i.ingredient == "hackfleisch") == 500
+
+
 def test_missing_ingredients_are_reported():
     result = generate_shopping_list(make_plan([]), 2)
     assert result.items == []

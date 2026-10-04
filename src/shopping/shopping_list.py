@@ -333,6 +333,28 @@ def round_amount(amount: float, unit: str | None) -> float:
         return round(amount, 1) if amount >= 0.1 else amount
 
 
+def _get_recipe_servings(recipe, stored) -> int:
+    """Return the most reliable original serving count for a recipe.
+
+    A weekly plan is persisted as JSON and can outlive a refreshed recipe
+    record.  Conversely, an older plan may not contain ``servings`` at all.
+    Using only one of these values therefore makes meal-prep quantities very
+    sensitive to stale data.  When both values exist, the larger positive
+    value is the safe choice: it prevents a stale low value from multiplying
+    a recipe that already contains enough food for several days.
+    """
+    candidates = []
+    for value in (getattr(recipe, "servings", None), getattr(stored, "servings", None)):
+        if value is not None:
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                candidates.append(value)
+    return max(candidates, default=2)
+
+
 def split_shopping_list_by_store(shopping_list: ShoppingList) -> SplitShoppingList:
     """Split a shopping list into Bioland and Rewe lists.
 
@@ -414,7 +436,7 @@ def generate_shopping_list(
         # value after a recipe was re-scraped.  Using that stale value here
         # can turn a four-serving recipe for two days into twice the required
         # amount.
-        recipe_servings = (recipe.servings or (stored.servings if stored else None) or 2)
+        recipe_servings = _get_recipe_servings(recipe, stored)
         household_factor = household_size / recipe_servings
 
         # Multi-day factor
