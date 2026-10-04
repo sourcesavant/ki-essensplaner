@@ -639,12 +639,15 @@ def update_slot_note(
 
 def _ensure_recipe_ingredients(recipe: ScoredRecipe) -> None:
     """Resolve empty recipe placeholders before committing a selection."""
-    if any(line.strip() for line in recipe.ingredients):
+    if any(line.strip() for line in recipe.ingredients) and recipe.servings:
         return
     stored = get_recipe(recipe.recipe_id) if recipe.recipe_id else None
     if stored is None and recipe.url:
         stored = get_recipe_by_url(recipe.url)
-    if not stored or not any(line.strip() for line in stored.ingredients):
+    if stored and any(line.strip() for line in stored.ingredients) and stored.servings:
+        recipe.servings = stored.servings
+        return
+    if not stored or not any(line.strip() for line in stored.ingredients) or not stored.servings:
         try:
             fetched = scrape_recipe(recipe.url) if recipe.url else None
         except Exception as exc:
